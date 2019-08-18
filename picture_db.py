@@ -1,14 +1,12 @@
-import psycopg2
 import os
-import ast
 import io
 import json
 import datetime
-from functools import wraps
 from collections import namedtuple
+from functools import wraps
+import psycopg2
 from PIL import Image
 import piexif
-from pprint import pprint
 
 
 class Exif:
@@ -23,7 +21,7 @@ class Exif:
             exif_tag_dict[ifd] = {}
             for tag in exif_dict[ifd]:
                 try:
-                   element =  exif_dict[ifd][tag].decode(cls.codec)
+                    element = exif_dict[ifd][tag].decode(cls.codec)
 
                 except AttributeError:
                     element = exif_dict[ifd][tag]
@@ -36,7 +34,7 @@ class Exif:
         try:
             return json.dumps(exif_tag_dict)
         except Exception as e:
-            print('Convert exif to tag first')
+            print(f'Convert exif to tag first, error is {e}')
             raise()
 
 
@@ -68,8 +66,9 @@ class PictureDb:
                         cursor = connection.cursor()
                         result = func(*args, cursor, **kwargs)
 
-                except (Exception, psycopg2.Error) as error:
-                        print(f'error while connect to PostgreSQL {cls.database}: {error}')
+                except psycopg2.Error as error:
+                    print(f'error while connect to PostgreSQL {cls.database}: '
+                          f'{error}')
 
                 finally:
                     if connection:
@@ -107,11 +106,14 @@ class PictureDb:
             thumbnail='thumbnail JSON',
             exif='exif JSON')
 
-        sql_string = f'CREATE TABLE {cls.table_name}({pics_tbl.id}, {pics_tbl.file_path}, {pics_tbl.file_name}, '\
-                     f'{pics_tbl.file_last_modified}, {pics_tbl.file_created}, {pics_tbl.file_size}, '\
-                     f'{pics_tbl.date_picture}, {pics_tbl.camera_make}, {pics_tbl.camera_model}, '\
-                     f'{pics_tbl.gps_latitude}, {pics_tbl.gps_longitude}, {pics_tbl.gps_altitude}, '\
-                     f'{pics_tbl.gps_img_direction}, {pics_tbl.thumbnail}, {pics_tbl.exif});'
+        sql_string = f'CREATE TABLE {cls.table_name}'\
+                     f'({pics_tbl.id}, {pics_tbl.file_path}, {pics_tbl.file_name}, '\
+                     f'{pics_tbl.file_last_modified}, {pics_tbl.file_created}, '\
+                     f'{pics_tbl.file_size}, {pics_tbl.date_picture}, '\
+                     f'{pics_tbl.camera_make}, {pics_tbl.camera_model}, '\
+                     f'{pics_tbl.gps_latitude}, {pics_tbl.gps_longitude}, '\
+                     f'{pics_tbl.gps_altitude}, {pics_tbl.gps_img_direction}, '\
+                     f'{pics_tbl.thumbnail}, {pics_tbl.exif});'
 
         print(sql_string)
         cursor.execute(sql_string)
@@ -148,28 +150,31 @@ class PictureDb:
             thumbnail = json.dumps(exif_dict.pop('thumbnail'))
             camera_make = exif_dict.get('0th').get('Make')
             camera_model = exif_dict.get('0th').get('Model')
-            date_picture = datetime.datetime.strptime(exif_dict.get('0th').get('DateTime'), '%Y:%m:%d %H:%M:%S')
+            date_picture = datetime.datetime.strptime(exif_dict.get('0th').\
+                           get('DateTime'), '%Y:%m:%d %H:%M:%S')
             gps = exif_dict.get('GPS')
             if gps:
                 gps_latitude = json.dumps(
-                                { 'ref': gps.get('GPSLatitudeRef'),
-                                  'pos': gps.get('GPSLatitude')})
+                    {'ref': gps.get('GPSLatitudeRef'),
+                     'pos': gps.get('GPSLatitude')})
                 gps_longitude = json.dumps(
-                                { 'ref': gps.get('GPSLongitudeRef'),
-                                  'pos': gps.get('GPSLongitude')})
+                    {'ref': gps.get('GPSLongitudeRef'),
+                     'pos': gps.get('GPSLongitude')})
                 gps_altitude = json.dumps(
-                                { 'ref': gps.get('GPSAltitudeRef'),
-                                  'alt': gps.get('GPSAltitude')})
+                    {'ref': gps.get('GPSAltitudeRef'),
+                     'alt': gps.get('GPSAltitude')})
                 gps_img_direction = json.dumps(
-                                { 'ref': gps.get('GPSImgDirectionRef'),
-                                  'dir': gps.get('GPSImgDirection')})
+                    {'ref': gps.get('GPSImgDirectionRef'),
+                     'dir': gps.get('GPSImgDirection')})
 
             else:
-                gps_latitude, gps_longitude, gps_altitude, gps_img_direction = [json.dumps({})]*4
+                gps_latitude, gps_longitude, gps_altitude, gps_img_direction = [
+                    json.dumps({})]*4
 
         else:
             camera_make, camera_model, date_picture = None, None, None
-            gps_latitude, gps_longitude, gps_altitude, gps_img_direction = [json.dumps({})]*4
+            gps_latitude, gps_longitude, gps_altitude, gps_img_direction = [
+                json.dumps({})]*4
 
         if not thumbnail:
             size = (180, 180)
@@ -189,13 +194,14 @@ class PictureDb:
                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);'
 
         print(sql_string)
-        cursor.execute(sql_string, (file_path, file_name, file_last_modified, file_created, file_size,
-                                    date_picture, camera_make, camera_model,
-                                    gps_latitude, gps_longitude, gps_altitude, gps_img_direction,
-                                    thumbnail, exif_json))
+        cursor.execute(sql_string, (file_path, file_name, file_last_modified,
+                                    file_created, file_size, date_picture, camera_make,
+                                    camera_model, gps_latitude, gps_longitude,
+                                    gps_altitude, gps_img_direction, thumbnail,
+                                    exif_json))
 
     @DbDecorators.connect
-    def load_picture_meta(cls, id, *args):
+    def load_picture_meta(cls, _id, *args):
         if args:
             cursor = args[0]
 
@@ -203,7 +209,7 @@ class PictureDb:
             print(f'no connection to database')
             return
 
-        sql_string = f'SELECT * FROM {cls.table_name} where id = \'{id}\';'
+        sql_string = f'SELECT * FROM {cls.table_name} where id = \'{_id}\';'
         print(sql_string)
         cursor.execute(sql_string)
 
@@ -239,8 +245,9 @@ class PictureDb:
 
 def test():
     filepath = './pics/'
-    filenames = ['Burgers 014.jpg', 'Burgers 016.jpg','groep.jpg', 'IMG_2218.JPG',  'IMG_2219.JPG', 'IMG_2220.JPG',
-                 'IMG_2221.JPG', 'IMG_2223.JPG', 'IMG_2224.JPG', 'IMG_2225.JPG', 'IMG_2226.JPG', 'IMG_2230.JPG',
+    filenames = ['Burgers 014.jpg', 'Burgers 016.jpg', 'groep.jpg', 'IMG_2218.JPG',
+                 'IMG_2219.JPG', 'IMG_2220.JPG', 'IMG_2221.JPG', 'IMG_2223.JPG',
+                 'IMG_2224.JPG', 'IMG_2225.JPG', 'IMG_2226.JPG', 'IMG_2230.JPG',
                  'moonwalk.jpg', 'Various 013.jpg', 'Various 018.jpg']
 
     picdb = PictureDb()
