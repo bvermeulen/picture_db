@@ -1,5 +1,6 @@
 import os
 import io
+import hashlib
 import json
 import datetime
 from collections import namedtuple
@@ -94,6 +95,7 @@ class DbUtils:
                 cursor = connection.cursor()
                 result = func(*args, cursor, **kwargs)
                 connection.commit()
+                print('sql action succes')
 
             except psycopg2.Error as error:
                 print(f'error while connect to PostgreSQL {cls.database}: '
@@ -124,7 +126,7 @@ class PictureDb:
     PicturesTable = namedtuple('PicturesTable',
                                'id, file_path, file_name,'
                                'file_last_modified, file_created, file_size,'
-                               'date_picture, camera_make, camera_model,'
+                               'date_picture, md5_signature, camera_make, camera_model,'
                                'gps_latitude, gps_longitude, gps_altitude,'
                                'gps_img_direction, thumbnail, exif')
 
@@ -141,6 +143,7 @@ class PictureDb:
             file_created='file_created TIMESTAMP',
             file_size='file_size INTEGER',
             date_picture='date_picture TIMESTAMP',
+            md5_signature='md5_signature VARCHAR(100)',
             camera_make='camera_make VARCHAR(20)',
             camera_model='camera_model VARCHAR(20)',
             gps_latitude='gps_latitude JSON',
@@ -153,7 +156,8 @@ class PictureDb:
         sql_string = f'CREATE TABLE {cls.table_name}'\
                      f'({pics_tbl.id}, {pics_tbl.file_path}, {pics_tbl.file_name}, '\
                      f'{pics_tbl.file_last_modified}, {pics_tbl.file_created}, '\
-                     f'{pics_tbl.file_size}, {pics_tbl.date_picture}, '\
+                     f'{pics_tbl.file_size}, {pics_tbl.date_picture}, ' \
+                     f'{pics_tbl.md5_signature}, '\
                      f'{pics_tbl.camera_make}, {pics_tbl.camera_model}, '\
                      f'{pics_tbl.gps_latitude}, {pics_tbl.gps_longitude}, '\
                      f'{pics_tbl.gps_altitude}, {pics_tbl.gps_img_direction}, '\
@@ -177,7 +181,7 @@ class PictureDb:
 
         # exif attributes
         im = Image.open(filename)
-        thumbnail = ''
+        thumbnail_bytes = b''
 
         try:
             exif_dict = piexif.load(im.info.get('exif'))
@@ -187,7 +191,7 @@ class PictureDb:
             exif_dict = {}
 
         if exif_dict:
-            thumbnail = json.dumps(exif_dict.pop('thumbnail'))
+            thumbnail_bytes = exif_dict.pop('thumbnail').encode(Exif().codec)
             camera_make = exif_dict.get('0th').get('Make')
             camera_model = exif_dict.get('0th').get('Model')
             date_picture = datetime.datetime.strptime(exif_dict.get('0th').\
@@ -216,28 +220,31 @@ class PictureDb:
             gps_latitude, gps_longitude, gps_altitude, gps_img_direction = [
                 json.dumps({})]*4
 
-        if not thumbnail:
+        if not thumbnail_bytes:
             size = (180, 180)
             im.thumbnail(size, Image.ANTIALIAS)
             img_bytes = io.BytesIO()
             im.save(img_bytes, format='JPEG')
-            thumbnail = json.dumps(img_bytes.getvalue().decode(Exif().codec))
+            thumbnail_bytes = img_bytes.getvalue()
 
+        thumbnail = json.dumps(thumbnail_bytes.decode(Exif().codec))
+        md5_signature = hashlib.md5(thumbnail_bytes).hexdigest()
         exif_json = Exif().exif_to_json(exif_dict)
 
         sql_string = f'INSERT INTO {cls.table_name} ('\
                      f'file_path, file_name, file_modified, file_created, file_size, '\
-                     f'date_picture, camera_make, camera_model, '\
+                     f'date_picture, md5_signature, camera_make, camera_model, '\
                      f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '\
                      f'thumbnail, exif) '\
-                     f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);'
+                     f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '\
+                     f'%s, %s, %s, %s, %s);'
 
         print(sql_string)
         cursor.execute(sql_string, (file_path, file_name, file_last_modified,
-                                    file_created, file_size, date_picture, camera_make,
-                                    camera_model, gps_latitude, gps_longitude,
-                                    gps_altitude, gps_img_direction, thumbnail,
-                                    exif_json))
+                                    file_created, file_size, date_picture, md5_signature,
+                                    camera_make, camera_model, gps_latitude,
+                                    gps_longitude, gps_altitude, gps_img_direction,
+                                    thumbnail, exif_json))
 
     @classmethod
     @DbUtils.connect
@@ -249,6 +256,10 @@ class PictureDb:
         cursor.execute(sql_string)
 
         data_from_db = cursor.fetchone()
+
+        if not data_from_db:
+            return
+
         pic_meta = cls.PicturesTable(
             id=data_from_db[0],
             file_path=data_from_db[1],
@@ -257,14 +268,15 @@ class PictureDb:
             file_created=data_from_db[4],
             file_size=data_from_db[5],
             date_picture=data_from_db[6],
-            camera_make=data_from_db[7],
-            camera_model=data_from_db[8],
-            gps_latitude=data_from_db[9],
-            gps_longitude=data_from_db[10],
-            gps_altitude=data_from_db[11],
-            gps_img_direction=data_from_db[12],
-            thumbnail=data_from_db[13],
-            exif=data_from_db[14],
+            md5_signature=data_from_db[7],
+            camera_make=data_from_db[8],
+            camera_model=data_from_db[9],
+            gps_latitude=data_from_db[10],
+            gps_longitude=data_from_db[11],
+            gps_altitude=data_from_db[12],
+            gps_img_direction=data_from_db[13],
+            thumbnail=data_from_db[14],
+            exif=data_from_db[15],
         )
 
         if pic_meta.thumbnail:
@@ -289,6 +301,7 @@ def test():
                  'IMG_2219.JPG', 'IMG_2220.JPG', 'IMG_2221.JPG', 'IMG_2223.JPG',
                  'IMG_2224.JPG', 'IMG_2225.JPG', 'IMG_2226.JPG', 'IMG_2230.JPG',
                  'moonwalk.jpg', 'Various 013.jpg', 'Various 018.jpg']
+    filenames = ['test_1.jpg', 'test_2.jpg', 'test_3.jpg']
 
     picdb = PictureDb()
     picdb.create_pictures_table()
