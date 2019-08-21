@@ -3,11 +3,11 @@ import io
 import hashlib
 import json
 import datetime
-from collections import namedtuple
 from functools import wraps
 import psycopg2
 from PIL import Image
 import piexif
+from recordtype import recordtype
 
 
 class Exif:
@@ -123,7 +123,7 @@ class DbUtils:
 
 class PictureDb:
     table_name = 'pictures'
-    PicturesTable = namedtuple('PicturesTable',
+    PicturesTable = recordtype('PicturesTable',
                                'id, file_path, file_name,'
                                'file_last_modified, file_created, file_size,'
                                'date_picture, md5_signature, camera_make, camera_model,'
@@ -143,7 +143,7 @@ class PictureDb:
             file_created='file_created TIMESTAMP',
             file_size='file_size INTEGER',
             date_picture='date_picture TIMESTAMP',
-            md5_signature='md5_signature VARCHAR(100)',
+            md5_signature='md5_signature VARCHAR(32)',
             camera_make='camera_make VARCHAR(20)',
             camera_model='camera_model VARCHAR(20)',
             gps_latitude='gps_latitude JSON',
@@ -163,21 +163,20 @@ class PictureDb:
                      f'{pics_tbl.gps_altitude}, {pics_tbl.gps_img_direction}, '\
                      f'{pics_tbl.thumbnail}, {pics_tbl.exif});'
 
-        print(sql_string)
+        print(f'create table {cls.table_name}')
         cursor.execute(sql_string)
 
     @classmethod
-    @DbUtils.connect
-    def store_picture_meta(cls, filename, *args):
-        cursor = DbUtils().get_cursor(args)
+    def get_pic_meta(cls, filename):
+        pic_meta = cls.PicturesTable(*[None]*16)
 
         # file attributes
         file_stat = os.stat(filename)
-        file_name = os.path.basename(filename)
-        file_path = os.path.abspath(filename).replace(file_name, '')
-        file_last_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
-        file_created = datetime.datetime.fromtimestamp(file_stat.st_ctime)
-        file_size = file_stat.st_size
+        pic_meta.file_name = os.path.basename(filename)
+        pic_meta.file_path = os.path.abspath(filename).replace(filename, '')
+        pic_meta.file_last_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
+        pic_meta.file_created = datetime.datetime.fromtimestamp(file_stat.st_ctime)
+        pic_meta.file_size = file_stat.st_size
 
         # exif attributes
         im = Image.open(filename)
@@ -192,33 +191,40 @@ class PictureDb:
 
         if exif_dict:
             thumbnail_bytes = exif_dict.pop('thumbnail').encode(Exif().codec)
-            camera_make = exif_dict.get('0th').get('Make')
-            camera_model = exif_dict.get('0th').get('Model')
-            date_picture = datetime.datetime.strptime(exif_dict.get('0th').\
-                           get('DateTime'), '%Y:%m:%d %H:%M:%S')
+            pic_meta.camera_make = exif_dict.get('0th').get('Make')
+            pic_meta.camera_model = exif_dict.get('0th').get('Model')
+
+            try:
+                pic_meta.date_picture = datetime.datetime.strptime(exif_dict.get('0th').\
+                    get('DateTime'), '%Y:%m:%d %H:%M:%S')
+
+            except TypeError:
+                pic_meta.date_picture = None
+
             gps = exif_dict.get('GPS')
             if gps:
-                gps_latitude = json.dumps(
+                pic_meta.gps_latitude = json.dumps(
                     {'ref': gps.get('GPSLatitudeRef'),
                      'pos': gps.get('GPSLatitude')})
-                gps_longitude = json.dumps(
+                pic_meta.gps_longitude = json.dumps(
                     {'ref': gps.get('GPSLongitudeRef'),
                      'pos': gps.get('GPSLongitude')})
-                gps_altitude = json.dumps(
+                pic_meta.gps_altitude = json.dumps(
                     {'ref': gps.get('GPSAltitudeRef'),
                      'alt': gps.get('GPSAltitude')})
-                gps_img_direction = json.dumps(
+                pic_meta.gps_img_direction = json.dumps(
                     {'ref': gps.get('GPSImgDirectionRef'),
                      'dir': gps.get('GPSImgDirection')})
 
             else:
-                gps_latitude, gps_longitude, gps_altitude, gps_img_direction = [
-                    json.dumps({})]*4
+                pic_meta.gps_latitude, pic_meta.gps_longitude, \
+                pic_meta.gps_altitude, pic_meta.gps_img_direction = [json.dumps({})]*4
 
         else:
-            camera_make, camera_model, date_picture = None, None, None
-            gps_latitude, gps_longitude, gps_altitude, gps_img_direction = [
-                json.dumps({})]*4
+            pic_meta.camera_make, pic_meta.camera_model, \
+                pic_meta.date_picture = None, None, None
+            pic_meta.gps_latitude, pic_meta.gps_longitude, \
+                pic_meta.gps_altitude, pic_meta.gps_img_direction = [json.dumps({})]*4
 
         if not thumbnail_bytes:
             size = (180, 180)
@@ -227,9 +233,17 @@ class PictureDb:
             im.save(img_bytes, format='JPEG')
             thumbnail_bytes = img_bytes.getvalue()
 
-        thumbnail = json.dumps(thumbnail_bytes.decode(Exif().codec))
-        md5_signature = hashlib.md5(thumbnail_bytes).hexdigest()
-        exif_json = Exif().exif_to_json(exif_dict)
+        pic_meta.thumbnail = json.dumps(thumbnail_bytes.decode(Exif().codec))
+        pic_meta.md5_signature = hashlib.md5(thumbnail_bytes).hexdigest()
+        pic_meta.exif = Exif().exif_to_json(exif_dict)
+
+        return pic_meta
+
+    @classmethod
+    @DbUtils.connect
+    def store_picture_meta(cls, filename, *args):
+        pic_meta = cls.get_pic_meta(filename)
+        cursor = DbUtils().get_cursor(args)
 
         sql_string = f'INSERT INTO {cls.table_name} ('\
                      f'file_path, file_name, file_modified, file_created, file_size, '\
@@ -239,12 +253,14 @@ class PictureDb:
                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '\
                      f'%s, %s, %s, %s, %s);'
 
-        print(sql_string)
-        cursor.execute(sql_string, (file_path, file_name, file_last_modified,
-                                    file_created, file_size, date_picture, md5_signature,
-                                    camera_make, camera_model, gps_latitude,
-                                    gps_longitude, gps_altitude, gps_img_direction,
-                                    thumbnail, exif_json))
+        print(f'store meta data for {filename}')
+        cursor.execute(sql_string, (
+            pic_meta.file_path, pic_meta.file_name,
+            pic_meta.file_last_modified, pic_meta.file_created, pic_meta.file_size,
+            pic_meta.date_picture, pic_meta.md5_signature, pic_meta.camera_make,
+            pic_meta.camera_model, pic_meta.gps_latitude, pic_meta.gps_longitude,
+            pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
+            pic_meta.exif))
 
     @classmethod
     @DbUtils.connect
@@ -252,7 +268,7 @@ class PictureDb:
         cursor = DbUtils().get_cursor(args)
 
         sql_string = f'SELECT * FROM {cls.table_name} where id = \'{_id}\';'
-        print(sql_string)
+        print(f'load meta data for id {_id}')
         cursor.execute(sql_string)
 
         data_from_db = cursor.fetchone()
@@ -297,11 +313,10 @@ class PictureDb:
 
 def test():
     filepath = './pics/'
-    filenames = ['Burgers 014.jpg', 'Burgers 016.jpg', 'groep.jpg', 'IMG_2218.JPG',
+    filenames = ['IMG_2218.JPG', 'in office.JPG',
                  'IMG_2219.JPG', 'IMG_2220.JPG', 'IMG_2221.JPG', 'IMG_2223.JPG',
                  'IMG_2224.JPG', 'IMG_2225.JPG', 'IMG_2226.JPG', 'IMG_2230.JPG',
-                 'moonwalk.jpg', 'Various 013.jpg', 'Various 018.jpg']
-    filenames = ['test_1.jpg', 'test_2.jpg', 'test_3.jpg']
+                ]
 
     picdb = PictureDb()
     picdb.create_pictures_table()
