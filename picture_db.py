@@ -10,6 +10,17 @@ import piexif
 from recordtype import recordtype
 
 
+def progress_message_generator(message):
+    loop_dash = ['\u2014', '\\', '|', '/']
+    i = 1
+    print_interval = 1
+    while True:
+        print(
+            f'\r{loop_dash[int(i/print_interval) % 4]} {i} {message}', end='')
+        i += 1
+        yield
+
+
 class Exif:
     ''' utility methods to handle picture exif
     '''
@@ -70,6 +81,7 @@ class Exif:
     def exif_to_json(cls, exif_tag_dict):
         try:
             return json.dumps(exif_tag_dict)
+
         except Exception as e:
             print(f'Convert exif to tag first, error is {e}')
             raise()
@@ -144,8 +156,8 @@ class PictureDb:
             file_size='file_size INTEGER',
             date_picture='date_picture TIMESTAMP',
             md5_signature='md5_signature VARCHAR(32)',
-            camera_make='camera_make VARCHAR(20)',
-            camera_model='camera_model VARCHAR(20)',
+            camera_make='camera_make VARCHAR(50)',
+            camera_model='camera_model VARCHAR(50)',
             gps_latitude='gps_latitude JSON',
             gps_longitude='gps_longitude JSON',
             gps_altitude='gps_altitude JSON',
@@ -173,32 +185,43 @@ class PictureDb:
         # file attributes
         file_stat = os.stat(filename)
         pic_meta.file_name = os.path.basename(filename)
-        pic_meta.file_path = os.path.abspath(filename).replace(filename, '')
+        pic_meta.file_path = os.path.abspath(filename).replace(pic_meta.file_name, '')
         pic_meta.file_last_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
         pic_meta.file_created = datetime.datetime.fromtimestamp(file_stat.st_ctime)
         pic_meta.file_size = file_stat.st_size
 
         # exif attributes
-        im = Image.open(filename)
+        try:
+            im = Image.open(filename)
+        except OSError:
+            return cls.PicturesTable(*[None]*16)
+
         thumbnail_bytes = b''
 
         try:
             exif_dict = piexif.load(im.info.get('exif'))
             exif_dict = Exif().exif_to_tag(exif_dict)
 
-        except TypeError:
+        except Exception:  #pylint: disable=W0703
             exif_dict = {}
 
         if exif_dict:
             thumbnail_bytes = exif_dict.pop('thumbnail').encode(Exif().codec)
             pic_meta.camera_make = exif_dict.get('0th').get('Make')
+            if pic_meta.camera_make:
+                pic_meta.camera_make = pic_meta.camera_make.\
+                    replace('\x00', '')
+
             pic_meta.camera_model = exif_dict.get('0th').get('Model')
+            if pic_meta.camera_model:
+                pic_meta.camera_model = pic_meta.camera_model.\
+                    replace('\x00', '')
 
             try:
                 pic_meta.date_picture = datetime.datetime.strptime(exif_dict.get('0th').\
                     get('DateTime'), '%Y:%m:%d %H:%M:%S')
 
-            except TypeError:
+            except (TypeError, ValueError):
                 pic_meta.date_picture = None
 
             gps = exif_dict.get('GPS')
@@ -243,6 +266,9 @@ class PictureDb:
     @DbUtils.connect
     def store_picture_meta(cls, filename, *args):
         pic_meta = cls.get_pic_meta(filename)
+        if not pic_meta.file_name:
+            return
+
         cursor = DbUtils().get_cursor(args)
 
         sql_string = f'INSERT INTO {cls.table_name} ('\
@@ -261,6 +287,45 @@ class PictureDb:
             pic_meta.camera_model, pic_meta.gps_latitude, pic_meta.gps_longitude,
             pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
             pic_meta.exif))
+
+
+
+    @classmethod
+    @DbUtils.connect
+    def store_pictures_base_folder(cls, base_folder, *args):
+        cursor = DbUtils().get_cursor(args)
+        progress_message = progress_message_generator(
+            f'loading picture meta data from {base_folder}')
+
+        sql_string = f'INSERT INTO {cls.table_name} ('\
+                     f'file_path, file_name, file_modified, file_created, file_size, '\
+                     f'date_picture, md5_signature, camera_make, camera_model, '\
+                     f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '\
+                     f'thumbnail, exif) '\
+                     f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '\
+                     f'%s, %s, %s, %s, %s);'
+
+        for foldername, _, filenames in os.walk(base_folder):
+            for filename in filenames:
+                if filename[-4:] in ['.jpg', '.JPG']:
+                    # print(foldername, filename)
+                    pic_meta = cls.get_pic_meta(os.path.join(foldername, filename))
+                    if not pic_meta.file_name:
+                        continue
+
+                    cursor.execute(sql_string, (
+                        pic_meta.file_path, pic_meta.file_name,
+                        pic_meta.file_last_modified, pic_meta.file_created,
+                        pic_meta.file_size, pic_meta.date_picture,
+                        pic_meta.md5_signature, pic_meta.camera_make,
+                        pic_meta.camera_model, pic_meta.gps_latitude,
+                        pic_meta.gps_longitude, pic_meta.gps_altitude,
+                        pic_meta.gps_img_direction, pic_meta.thumbnail,
+                        pic_meta.exif))
+
+                    next(progress_message)
+
+        print()
 
     @classmethod
     @DbUtils.connect
@@ -312,20 +377,22 @@ class PictureDb:
 
 
 def test():
-    filepath = './pics/'
-    filenames = ['IMG_2218.JPG', 'in office.JPG',
-                 'IMG_2219.JPG', 'IMG_2220.JPG', 'IMG_2221.JPG', 'IMG_2223.JPG',
-                 'IMG_2224.JPG', 'IMG_2225.JPG', 'IMG_2226.JPG', 'IMG_2230.JPG',
-                ]
+    # filepath = './pics/'
+    # filenames = ['IMG_2218.JPG', 'in office.JPG',
+    #              'IMG_2219.JPG', 'IMG_2220.JPG', 'IMG_2221.JPG', 'IMG_2223.JPG',
+    #              'IMG_2224.JPG', 'IMG_2225.JPG', 'IMG_2226.JPG', 'IMG_2230.JPG',
+    #             ]
 
     picdb = PictureDb()
     picdb.create_pictures_table()
 
-    for pic in filenames:
-        filename = filepath + pic
-        picdb.store_picture_meta(filename)
+    # filename = './pics/castle.JPG'
+    # picdb.store_picture_meta(filename)
 
-    picdb.load_picture_meta(10)
+    base_folder = 'D:\\Pictures'
+    picdb.store_pictures_base_folder(base_folder)
+
+    picdb.load_picture_meta(15000)
 
 if __name__ == '__main__':
     test()
