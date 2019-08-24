@@ -137,7 +137,7 @@ class PictureDb:
     table_name = 'pictures'
     PicturesTable = recordtype('PicturesTable',
                                'id, file_path, file_name,'
-                               'file_last_modified, file_created, file_size,'
+                               'file_modified, file_created, file_size,'
                                'date_picture, md5_signature, camera_make, camera_model,'
                                'gps_latitude, gps_longitude, gps_altitude,'
                                'gps_img_direction, thumbnail, exif')
@@ -151,7 +151,7 @@ class PictureDb:
             id='id SERIAL PRIMARY KEY',
             file_path='file_path VARCHAR(250)',
             file_name='file_name VARCHAR(250)',
-            file_last_modified='file_modified TIMESTAMP',
+            file_modified='file_modified TIMESTAMP',
             file_created='file_created TIMESTAMP',
             file_size='file_size INTEGER',
             date_picture='date_picture TIMESTAMP',
@@ -167,7 +167,7 @@ class PictureDb:
 
         sql_string = f'CREATE TABLE {cls.table_name}'\
                      f'({pics_tbl.id}, {pics_tbl.file_path}, {pics_tbl.file_name}, '\
-                     f'{pics_tbl.file_last_modified}, {pics_tbl.file_created}, '\
+                     f'{pics_tbl.file_modified}, {pics_tbl.file_created}, '\
                      f'{pics_tbl.file_size}, {pics_tbl.date_picture}, ' \
                      f'{pics_tbl.md5_signature}, '\
                      f'{pics_tbl.camera_make}, {pics_tbl.camera_model}, '\
@@ -186,7 +186,7 @@ class PictureDb:
         file_stat = os.stat(filename)
         pic_meta.file_name = os.path.basename(filename)
         pic_meta.file_path = os.path.abspath(filename).replace(pic_meta.file_name, '')
-        pic_meta.file_last_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
+        pic_meta.file_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
         pic_meta.file_created = datetime.datetime.fromtimestamp(file_stat.st_ctime)
         pic_meta.file_size = file_stat.st_size
 
@@ -282,12 +282,11 @@ class PictureDb:
         print(f'store meta data for {filename}')
         cursor.execute(sql_string, (
             pic_meta.file_path, pic_meta.file_name,
-            pic_meta.file_last_modified, pic_meta.file_created, pic_meta.file_size,
+            pic_meta.file_modified, pic_meta.file_created, pic_meta.file_size,
             pic_meta.date_picture, pic_meta.md5_signature, pic_meta.camera_make,
             pic_meta.camera_model, pic_meta.gps_latitude, pic_meta.gps_longitude,
             pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
             pic_meta.exif))
-
 
 
     @classmethod
@@ -315,7 +314,7 @@ class PictureDb:
 
                     cursor.execute(sql_string, (
                         pic_meta.file_path, pic_meta.file_name,
-                        pic_meta.file_last_modified, pic_meta.file_created,
+                        pic_meta.file_modified, pic_meta.file_created,
                         pic_meta.file_size, pic_meta.date_picture,
                         pic_meta.md5_signature, pic_meta.camera_make,
                         pic_meta.camera_model, pic_meta.gps_latitude,
@@ -345,7 +344,7 @@ class PictureDb:
             id=data_from_db[0],
             file_path=data_from_db[1],
             file_name=data_from_db[2],
-            file_last_modified=data_from_db[3],
+            file_modified=data_from_db[3],
             file_created=data_from_db[4],
             file_size=data_from_db[5],
             date_picture=data_from_db[6],
@@ -367,32 +366,77 @@ class PictureDb:
             im.show()
 
         for key, val in pic_meta._asdict().items():
-            if key != 'thumbnail':
-                print(f'{key}: {val}')
+            if key == 'thumbnail':
+                continue
+
+            print(f'{key}: {val}')
 
         latitude, longitude, altitude = Exif().\
             convert_gps(pic_meta.gps_latitude, pic_meta.gps_longitude,
                         pic_meta.gps_altitude)
         print(f'coordinate: {latitude}, {longitude}, altitude: {altitude}')
 
+    @classmethod
+    @DbUtils.connect
+    def select_pics_for_merge(cls, source_folder, destination_folder, *args):
+        '''  method that checks if picture if in the database. If it is
+             not moves picture from source folder to the destination folder
+        '''
+        cursor = DbUtils().get_cursor(args)
+
+        for foldername, _, filenames in os.walk(source_folder):
+            for filename in filenames:
+                if filename[-4:] not in ['.jpg', '.JPG']:
+                    continue
+
+                pic_meta = cls.get_pic_meta(os.path.join(foldername, filename))
+                print(filename)
+
+                sql_string = f'select id from {cls.table_name} where '\
+                             f'\'{pic_meta.md5_signature}\'=md5_signature'
+                print(sql_string)
+                cursor.execute(sql_string)
+                result = cursor.fetchone()
+                print(f'result: {result}')
+                if result:
+                    continue
+
+                if pic_meta.date_picture:
+                    sql_string = f'select id from {cls.table_name} where '\
+                                 f'date_picture = \'{pic_meta.date_picture}\''
+                    print(sql_string)
+                    cursor.execute(sql_string)
+                    result = cursor.fetchone()
+                    print(f'result: {result}')
+                    if result:
+                        continue
+
+                else:
+                    sql_string = f'select id from {cls.table_name} where '\
+                                 f'file_modified timestamp \'{pic_meta.file_modified}\''
+                    print(sql_string)
+                    cursor.execute(sql_string)
+                    result = cursor.fetchone()
+                    print(f'result: {result}')
+                    if result:
+                        continue
+
+                print(f'move file {filename} to {destination_folder}')
+
 
 def test():
-    # filepath = './pics/'
-    # filenames = ['IMG_2218.JPG', 'in office.JPG',
-    #              'IMG_2219.JPG', 'IMG_2220.JPG', 'IMG_2221.JPG', 'IMG_2223.JPG',
-    #              'IMG_2224.JPG', 'IMG_2225.JPG', 'IMG_2226.JPG', 'IMG_2230.JPG',
-    #             ]
-
     picdb = PictureDb()
-    picdb.create_pictures_table()
+    # picdb.create_pictures_table()
 
-    # filename = './pics/castle.JPG'
-    # picdb.store_picture_meta(filename)
+    # base_folder = 'd:\\pictures'
+    # picdb.store_pictures_base_folder(base_folder)
 
-    base_folder = 'D:\\Pictures'
-    picdb.store_pictures_base_folder(base_folder)
+    # picdb.load_picture_meta(3312)
 
-    picdb.load_picture_meta(15000)
+    source_folder = 'd:\\Pics_google'
+    destination_folder = 'd:\\Pics_unsorted'
+    picdb.select_pics_for_merge(source_folder, destination_folder)
+
 
 if __name__ == '__main__':
     test()
