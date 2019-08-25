@@ -1,12 +1,14 @@
-import os
-import io
-import hashlib
-import json
+import shutil
 import datetime
+import hashlib
+import io
+import json
+import os
 from functools import wraps
+import numpy as np
+import piexif
 import psycopg2
 from PIL import Image
-import piexif
 from recordtype import recordtype
 
 
@@ -306,8 +308,8 @@ class PictureDb:
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
+
                 if filename[-4:] in ['.jpg', '.JPG']:
-                    # print(foldername, filename)
                     pic_meta = cls.get_pic_meta(os.path.join(foldername, filename))
                     if not pic_meta.file_name:
                         continue
@@ -383,46 +385,114 @@ class PictureDb:
              not moves picture from source folder to the destination folder
         '''
         cursor = DbUtils().get_cursor(args)
+        progress_message = progress_message_generator(
+            f'merging pictures from {source_folder}')
 
         for foldername, _, filenames in os.walk(source_folder):
             for filename in filenames:
                 if filename[-4:] not in ['.jpg', '.JPG']:
                     continue
 
+                next(progress_message)
                 pic_meta = cls.get_pic_meta(os.path.join(foldername, filename))
-                print(filename)
 
                 sql_string = f'select id from {cls.table_name} where '\
                              f'\'{pic_meta.md5_signature}\'=md5_signature'
-                print(sql_string)
                 cursor.execute(sql_string)
-                result = cursor.fetchone()
-                print(f'result: {result}')
-                if result:
+                if cursor.fetchone():
                     continue
 
                 if pic_meta.date_picture:
                     sql_string = f'select id from {cls.table_name} where '\
                                  f'date_picture = \'{pic_meta.date_picture}\''
-                    print(sql_string)
                     cursor.execute(sql_string)
-                    result = cursor.fetchone()
-                    print(f'result: {result}')
-                    if result:
+                    if cursor.fetchone():
                         continue
 
                 else:
                     sql_string = f'select id from {cls.table_name} where '\
-                                 f'file_modified timestamp \'{pic_meta.file_modified}\''
-                    print(sql_string)
+                                 f'file_modified = \'{pic_meta.file_modified}\''
                     cursor.execute(sql_string)
-                    result = cursor.fetchone()
-                    print(f'result: {result}')
-                    if result:
+                    if cursor.fetchone():
                         continue
 
-                print(f'move file {filename} to {destination_folder}')
+                shutil.move(os.path.join(foldername, filename),
+                            os.path.join(destination_folder, filename))
 
+        print()
+
+    @classmethod
+    @DbUtils.connect
+    def remove_duplicate_pics(cls, deleted_folder, *args, method='md5'):
+        '''  sort out duplicate pictures by either using the md5_signature or TODO picture
+             date.
+        '''
+        if method == 'md5':
+            method = 'md5_signature'
+
+        elif method == 'time':
+            method = 'date_picture'
+
+        else:
+            print(f'{method} not valid, choose \'md5\' or \'time\'...')
+            return
+
+        log_file = os.path.join(deleted_folder, 'log_file.log')
+        with open(log_file, 'at') as f:
+            c_time = datetime.datetime.now()
+            f.write(f'Delete file log: {c_time}\n')
+
+        cursor = DbUtils().get_cursor(args)
+        sql_string = f'select {method} from {cls.table_name} where {method} in '\
+                     f'(select {method} from {cls.table_name} group by {method} '\
+                     f'having count(*) > 1) order by {method}'
+        cursor.execute(sql_string)
+        list_duplicates = {item[0] for item in cursor.fetchall()}
+
+        for item in list_duplicates:
+            sql_string = f'select file_path, file_name, thumbnail from {cls.table_name} '\
+                         f'where md5_signature=\'{item}\''
+            cursor.execute(sql_string)
+            pic_selection = []
+            choices = []
+            for i, pic_tuple in enumerate(cursor.fetchall()):
+                choices.append(i)
+                pic_file = io.BytesIO(pic_tuple[2].encode(Exif().codec))
+                pic_selection.append({'index': i,
+                                      'file_path': pic_tuple[0],
+                                      'file_name': pic_tuple[1],
+                                      'thumbnail': pic_file})
+
+            pic_array = []
+            print('-'*80)
+            for pic in pic_selection:
+                pic_array.append(np.array(Image.open(pic.get('thumbnail'))))
+                print(f'[{pic.get("index") + 1}] '\
+                      f'[{os.path.join(pic.get("file_path"), pic.get("file_name"))}]')
+
+            Image.fromarray(np.hstack(pic_array)).show()
+            answer_keep = 0
+            while answer_keep -1 not in choices:
+                answer_keep = int(input('Keep picture number (press 0 to quit): '))
+                if answer_keep == 0:
+                    shutil.sys.exit()
+
+            log_lines = []
+            for pic in pic_selection:
+                if pic.get('index') != answer_keep - 1:
+                    _from = os.path.join(pic.get('file_path'), pic.get('file_name'))
+                    _to = os.path.join(deleted_folder, pic.get('file_name'))
+                    shutil.move(_from, _to)
+
+                    log_line = f'file deleted: {_from}'
+
+                    print(log_line)
+                    log_lines.append(log_line)
+
+            log_file = os.path.join(deleted_folder, 'log_file.log')
+            with open(log_file, 'at') as f:
+                for line in log_lines:
+                    f.write(line + '\n')
 
 def test():
     picdb = PictureDb()
@@ -433,10 +503,12 @@ def test():
 
     # picdb.load_picture_meta(3312)
 
-    source_folder = 'd:\\Pics_google'
-    destination_folder = 'd:\\Pics_unsorted'
-    picdb.select_pics_for_merge(source_folder, destination_folder)
+    # source_folder = 'd:\\Pics_google'
+    # destination_folder = 'd:\\Pics_unsorted'
+    # picdb.select_pics_for_merge(source_folder, destination_folder)
 
+    deleted_folder = 'd:\\Pics_deleted'
+    picdb.remove_duplicate_pics(deleted_folder, method='md5')
 
 if __name__ == '__main__':
     test()
