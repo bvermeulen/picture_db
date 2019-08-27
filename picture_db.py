@@ -146,6 +146,15 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
+    def delete_pictures_table(cls, *args):
+        cursor = DbUtils().get_cursor(args)
+
+        sql_string = f'drop table {cls.table_name}'
+        cursor.execute(sql_string)
+        print(f'delete table {cls.table_name}')
+
+    @classmethod
+    @DbUtils.connect
     def create_pictures_table(cls, *args):
         cursor = DbUtils().get_cursor(args)
 
@@ -445,22 +454,23 @@ class PictureDb:
         cursor = DbUtils().get_cursor(args)
         sql_string = f'select {method} from {cls.table_name} where {method} in '\
                      f'(select {method} from {cls.table_name} group by {method} '\
-                     f'having count(*) > 1) order by {method}'
+                     f'having count(*) > 1) order by id'
         cursor.execute(sql_string)
         list_duplicates = {item[0] for item in cursor.fetchall()}
 
         for item in list_duplicates:
-            sql_string = f'select file_path, file_name, thumbnail from {cls.table_name} '\
-                         f'where md5_signature=\'{item}\''
+            sql_string = f'select id, file_path, file_name, thumbnail '\
+                         f'from {cls.table_name} where md5_signature=\'{item}\''
             cursor.execute(sql_string)
             pic_selection = []
             choices = []
             for i, pic_tuple in enumerate(cursor.fetchall()):
                 choices.append(i)
-                pic_file = io.BytesIO(pic_tuple[2].encode(Exif().codec))
+                pic_file = io.BytesIO(pic_tuple[3].encode(Exif().codec))
                 pic_selection.append({'index': i,
-                                      'file_path': pic_tuple[0],
-                                      'file_name': pic_tuple[1],
+                                      'id': pic_tuple[0],
+                                      'file_path': pic_tuple[1],
+                                      'file_name': pic_tuple[2],
                                       'thumbnail': pic_file})
 
             pic_array = []
@@ -475,40 +485,26 @@ class PictureDb:
             while answer_keep -1 not in choices:
                 answer_keep = int(input('Keep picture number (press 0 to quit): '))
                 if answer_keep == 0:
-                    shutil.sys.exit()
+                    return
 
             log_lines = []
+            deleted_ids = []
             for pic in pic_selection:
                 if pic.get('index') != answer_keep - 1:
+                    deleted_ids.append(pic.get('id'))
                     _from = os.path.join(pic.get('file_path'), pic.get('file_name'))
                     _to = os.path.join(deleted_folder, pic.get('file_name'))
                     shutil.move(_from, _to)
 
-                    log_line = f'file deleted: {_from}'
-
+                    log_line = f'file deleted, id: {pic.get("id")}, file_name: {_from}'
                     print(log_line)
                     log_lines.append(log_line)
+
+            sql_string = f'delete from {cls.table_name} '\
+                         f'where id=any(array{deleted_ids})'
+            cursor.execute(sql_string)
 
             log_file = os.path.join(deleted_folder, 'log_file.log')
             with open(log_file, 'at') as f:
                 for line in log_lines:
                     f.write(line + '\n')
-
-def test():
-    picdb = PictureDb()
-    # picdb.create_pictures_table()
-
-    # base_folder = 'd:\\pictures'
-    # picdb.store_pictures_base_folder(base_folder)
-
-    # picdb.load_picture_meta(3312)
-
-    # source_folder = 'd:\\Pics_google'
-    # destination_folder = 'd:\\Pics_unsorted'
-    # picdb.select_pics_for_merge(source_folder, destination_folder)
-
-    deleted_folder = 'd:\\Pics_deleted'
-    picdb.remove_duplicate_pics(deleted_folder, method='md5')
-
-if __name__ == '__main__':
-    test()
