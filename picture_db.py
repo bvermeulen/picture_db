@@ -134,6 +134,29 @@ class DbUtils:
             print('unable to connect to database')
             raise()
 
+    @staticmethod
+    def get_answer(choices):
+        ''' returns either:
+            1, 2, or n : choices to keep
+            0 : exit function
+            -1 : skip item
+        '''
+        answer_keep = -2
+        while answer_keep -1 not in choices and answer_keep not in [-1, 0]:
+            answer_keep = input('Keep picture number (press 0 to quit, '
+                                'space to skip): ')
+            if answer_keep == ' ':
+                answer_keep = -1
+
+            else:
+                try:
+                    answer_keep = int(answer_keep)
+
+                except ValueError:
+                    answer_keep = -2
+
+        return answer_keep
+
 
 class PictureDb:
     table_name = 'pictures'
@@ -436,6 +459,8 @@ class PictureDb:
         '''  sort out duplicate pictures by either using the md5_signature or TODO picture
              date.
         '''
+        utils = DbUtils()
+
         if method == 'md5':
             method = 'md5_signature'
 
@@ -451,7 +476,7 @@ class PictureDb:
             c_time = datetime.datetime.now()
             f.write(f'Delete file log: {c_time}\n')
 
-        cursor = DbUtils().get_cursor(args)
+        cursor = utils.get_cursor(args)
         sql_string = f'select {method} from {cls.table_name} where {method} in '\
                      f'(select {method} from {cls.table_name} group by {method} '\
                      f'having count(*) > 1) order by id'
@@ -481,11 +506,13 @@ class PictureDb:
                       f'[{os.path.join(pic.get("file_path"), pic.get("file_name"))}]')
 
             Image.fromarray(np.hstack(pic_array)).show()
-            answer_keep = 0
-            while answer_keep -1 not in choices:
-                answer_keep = int(input('Keep picture number (press 0 to quit): '))
-                if answer_keep == 0:
-                    return
+
+            answer_keep = utils.get_answer(choices)
+            if answer_keep == -1:
+                continue
+
+            if answer_keep == 0:
+                return
 
             log_lines = []
             deleted_ids = []

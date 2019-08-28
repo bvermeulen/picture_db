@@ -26,4 +26,5 @@ if __name__ == '__main__':
     # run_create_table()
     # run_fill_pic_base()
     # run_load_picture()
+
     run_remove_duplicates()
