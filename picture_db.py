@@ -455,6 +455,13 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
+    def delete_ids(cls, deleted_ids, *args):
+        cursor = DbUtils().get_cursor(args)
+        sql_string = f'delete from {cls.table_name} where id=any(array{deleted_ids})'
+        cursor.execute(sql_string)
+
+    @classmethod
+    @DbUtils.connect
     def remove_duplicate_pics(cls, deleted_folder, *args, method='md5'):
         '''  sort out duplicate pictures by either using the md5_signature or TODO picture
              date.
@@ -527,9 +534,9 @@ class PictureDb:
                     print(log_line)
                     log_lines.append(log_line)
 
-            sql_string = f'delete from {cls.table_name} '\
-                         f'where id=any(array{deleted_ids})'
-            cursor.execute(sql_string)
+            # call seperately to make sure change to db is committed on
+            # return of this function
+            cls.delete_ids(deleted_ids)
 
             log_file = os.path.join(deleted_folder, 'log_file.log')
             with open(log_file, 'at') as f:
