@@ -17,7 +17,7 @@ def run_fill_pic_base():
 
 
 def run_load_picture():
-    picdb.load_picture_meta(3312)
+    picdb.load_picture_meta(8147)
 
 
 def run_merge_pictures():
@@ -26,9 +26,9 @@ def run_merge_pictures():
     picdb.select_pics_for_merge(source_folder, destination_folder)
 
 
-def run_remove_duplicates():
+def run_remove_duplicates(method='md5'):
     deleted_folder = 'd:\\Pics_deleted'
-    picdb.remove_duplicate_pics(deleted_folder, method='md5')
+    picdb.remove_duplicate_pics(deleted_folder, method=method)
 
 
 if __name__ == '__main__':
@@ -36,5 +36,5 @@ if __name__ == '__main__':
     # run_create_table()
     # run_fill_pic_base()
     # run_load_picture()
-    run_merge_pictures()
-    # run_remove_duplicates()
+    # run_merge_pictures()
+    run_remove_duplicates(method='date')

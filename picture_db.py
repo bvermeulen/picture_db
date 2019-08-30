@@ -322,7 +322,6 @@ class PictureDb:
             pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
             pic_meta.exif))
 
-
     @classmethod
     @DbUtils.connect
     def store_pictures_base_folder(cls, base_folder, *args):
@@ -423,7 +422,7 @@ class PictureDb:
         log_file = os.path.join(source_folder, '_select_pictures_to_merge.log')
         with open(log_file, 'at') as f:
             c_time = datetime.datetime.now()
-            f.write(f'Merge file log: {c_time}\n')
+            f.write(f'===> Select pictures to merge: {c_time}\n')
 
         log_lines = []
         for foldername, _, filenames in os.walk(source_folder):
@@ -502,7 +501,7 @@ class PictureDb:
         if method == 'md5':
             method = 'md5_signature'
 
-        elif method == 'time':
+        elif method == 'date':
             method = 'date_picture'
 
         else:
@@ -512,7 +511,7 @@ class PictureDb:
         log_file = os.path.join(deleted_folder, '_delete_duplicate_pictures.log')
         with open(log_file, 'at') as f:
             c_time = datetime.datetime.now()
-            f.write(f'Delete file log: {c_time}\n')
+            f.write(f'===> Remove duplicates with method \'{method}\': {c_time}\n')
 
         cursor = utils.get_cursor(args)
         sql_string = f'select {method} from {cls.table_name} where {method} in '\
@@ -523,7 +522,7 @@ class PictureDb:
 
         for item in list_duplicates:
             sql_string = f'select id, file_path, file_name, thumbnail '\
-                         f'from {cls.table_name} where md5_signature=\'{item}\''
+                         f'from {cls.table_name} where {method}=\'{item}\''
             cursor.execute(sql_string)
             pic_selection = []
             choices = []
@@ -536,14 +535,24 @@ class PictureDb:
                                       'file_name': pic_tuple[2],
                                       'thumbnail': pic_file})
 
-            pic_array = []
+            if method == 'date_picture' and len(choices) > 2:
+                continue
+
+            pic_array = {'array': [],
+                         'size': []}
             print('-'*80)
             for pic in pic_selection:
-                pic_array.append(np.array(Image.open(pic.get('thumbnail'))))
                 print(f'[{pic.get("index") + 1}] '\
                       f'[{os.path.join(pic.get("file_path"), pic.get("file_name"))}]')
+                image_array = np.array(Image.open(pic.get('thumbnail')))
+                pic_array['size'].append(image_array.size)
+                pic_array['array'].append(image_array)
 
-            Image.fromarray(np.hstack(pic_array)).show()
+            # check if all array sizes are the same if not skip and continue
+            if not all(val == pic_array['size'][0] for val in pic_array['size']):
+                continue
+
+            Image.fromarray(np.hstack(pic_array['array'])).show()
 
             answer_keep = utils.get_answer(choices)
             if answer_keep == -1:
