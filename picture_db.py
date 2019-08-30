@@ -420,25 +420,39 @@ class PictureDb:
         progress_message = progress_message_generator(
             f'merging pictures from {source_folder}')
 
+        log_file = os.path.join(source_folder, '_select_pictures_to_merge.log')
+        with open(log_file, 'at') as f:
+            c_time = datetime.datetime.now()
+            f.write(f'Merge file log: {c_time}\n')
+
+        log_lines = []
         for foldername, _, filenames in os.walk(source_folder):
             for filename in filenames:
                 if filename[-4:] not in ['.jpg', '.JPG']:
                     continue
 
+                full_file_name = os.path.join(foldername, filename)
                 next(progress_message)
-                pic_meta = cls.get_pic_meta(os.path.join(foldername, filename))
 
+                pic_meta = cls.get_pic_meta(full_file_name)
+
+                # check on md5_signature
                 sql_string = f'select id from {cls.table_name} where '\
-                             f'\'{pic_meta.md5_signature}\'=md5_signature'
+                            f'\'{pic_meta.md5_signature}\'=md5_signature'
                 cursor.execute(sql_string)
                 if cursor.fetchone():
+                    log_lines.append(f'{full_file_name} already in database: '
+                                     f'match md5_signature, {pic_meta.md5_signature}')
                     continue
 
+                # check on picture dates
                 if pic_meta.date_picture:
                     sql_string = f'select id from {cls.table_name} where '\
-                                 f'date_picture = \'{pic_meta.date_picture}\''
+                                f'date_picture = \'{pic_meta.date_picture}\''
                     cursor.execute(sql_string)
                     if cursor.fetchone():
+                        log_lines.append(f'{full_file_name} seems already in database: '
+                                         f'match date_picture {pic_meta.date_picture}')
                         continue
 
                 else:
@@ -446,10 +460,27 @@ class PictureDb:
                                  f'file_modified = \'{pic_meta.file_modified}\''
                     cursor.execute(sql_string)
                     if cursor.fetchone():
+                        log_lines.append(f'{full_file_name} seems already in database: '
+                                         f'match file modified {pic_meta.file_modified}')
                         continue
 
+                # check on file size
+                sql_string = f'select id from {cls.table_name} where '\
+                             f'file_size = \'{pic_meta.file_size}\''
+                cursor.execute(sql_string)
+                if cursor.fetchone():
+                    log_lines.append(f'{full_file_name} seems already in database: '
+                                     f'match file size {pic_meta.file_size}')
+                    continue
+
+                log_lines.append(f'{full_file_name} not found in database '
+                                 f'and moved to {destination_folder}')
                 shutil.move(os.path.join(foldername, filename),
                             os.path.join(destination_folder, filename))
+
+        with open(log_file, 'at') as f:
+            for line in log_lines:
+                f.write(line + '\n')
 
         print()
 
@@ -478,7 +509,7 @@ class PictureDb:
             print(f'{method} not valid, choose \'md5\' or \'time\'...')
             return
 
-        log_file = os.path.join(deleted_folder, 'log_file.log')
+        log_file = os.path.join(deleted_folder, '_delete_duplicate_pictures.log')
         with open(log_file, 'at') as f:
             c_time = datetime.datetime.now()
             f.write(f'Delete file log: {c_time}\n')
@@ -538,7 +569,6 @@ class PictureDb:
             # return of this function
             cls.delete_ids(deleted_ids)
 
-            log_file = os.path.join(deleted_folder, 'log_file.log')
             with open(log_file, 'at') as f:
                 for line in log_lines:
                     f.write(line + '\n')

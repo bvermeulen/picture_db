@@ -36,5 +36,5 @@ if __name__ == '__main__':
     # run_create_table()
     # run_fill_pic_base()
     # run_load_picture()
-    # run_merge_pictures()
-    run_remove_duplicates()
+    run_merge_pictures()
+    # run_remove_duplicates()
