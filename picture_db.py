@@ -157,9 +157,33 @@ class DbUtils:
 
         return answer_keep
 
+    @staticmethod
+    def pad_with_zeros(_array, size):
+        array_padded = np.ones((size, size, 3), dtype=np.uint8)*200
+        for i in range(array_padded.shape[0]):
+            for j in range(array_padded.shape[1]):
+                try:
+                    array_padded[i, j] = _array[i, j]
+                except IndexError:
+                    pass
+
+        return array_padded
+
+    @staticmethod
+    def get_name_and_date():
+        valid = False
+        while not valid:
+            name = input('Please give your name: ')
+            if len(name) > 5:
+                valid = True
+
+        return name, datetime.datetime.now()
+
 
 class PictureDb:
-    table_name = 'pictures'
+    table_pictures = 'pictures'
+    table_reviews = 'reviews'
+
     PicturesTable = recordtype('PicturesTable',
                                'id, file_path, file_name,'
                                'file_modified, file_created, file_size,'
@@ -167,14 +191,26 @@ class PictureDb:
                                'gps_latitude, gps_longitude, gps_altitude,'
                                'gps_img_direction, thumbnail, exif')
 
+    ReviewTable = recordtype('ReviewTable',
+                             'id, picture_id, reviewer_name, review_date')
+
     @classmethod
     @DbUtils.connect
     def delete_pictures_table(cls, *args):
         cursor = DbUtils().get_cursor(args)
 
-        sql_string = f'drop table {cls.table_name}'
+        sql_string = f'drop table {cls.table_pictures}'
         cursor.execute(sql_string)
-        print(f'delete table {cls.table_name}')
+        print(f'delete table {cls.table_pictures}')
+
+    @classmethod
+    @DbUtils.connect
+    def delete_reviews_table(cls, *args):
+        cursor = DbUtils().get_cursor(args)
+
+        sql_string = f'drop table {cls.table_reviews}'
+        cursor.execute(sql_string)
+        print(f'delete table {cls.table_reviews}')
 
     @classmethod
     @DbUtils.connect
@@ -199,17 +235,37 @@ class PictureDb:
             thumbnail='thumbnail JSON',
             exif='exif JSON')
 
-        sql_string = f'CREATE TABLE {cls.table_name}'\
-                     f'({pics_tbl.id}, {pics_tbl.file_path}, {pics_tbl.file_name}, '\
-                     f'{pics_tbl.file_modified}, {pics_tbl.file_created}, '\
-                     f'{pics_tbl.file_size}, {pics_tbl.date_picture}, ' \
-                     f'{pics_tbl.md5_signature}, '\
-                     f'{pics_tbl.camera_make}, {pics_tbl.camera_model}, '\
-                     f'{pics_tbl.gps_latitude}, {pics_tbl.gps_longitude}, '\
-                     f'{pics_tbl.gps_altitude}, {pics_tbl.gps_img_direction}, '\
-                     f'{pics_tbl.thumbnail}, {pics_tbl.exif});'
+        sql_string = (f'CREATE TABLE {cls.table_pictures}'
+                      f'({pics_tbl.id}, {pics_tbl.file_path}, {pics_tbl.file_name}, '
+                      f'{pics_tbl.file_modified}, {pics_tbl.file_created}, '
+                      f'{pics_tbl.file_size}, {pics_tbl.date_picture}, '
+                      f'{pics_tbl.md5_signature}, '
+                      f'{pics_tbl.camera_make}, {pics_tbl.camera_model}, '
+                      f'{pics_tbl.gps_latitude}, {pics_tbl.gps_longitude}, '
+                      f'{pics_tbl.gps_altitude}, {pics_tbl.gps_img_direction}, '
+                      f'{pics_tbl.thumbnail}, {pics_tbl.exif});')
 
-        print(f'create table {cls.table_name}')
+        print(f'create table {cls.table_pictures}')
+        cursor.execute(sql_string)
+
+    @classmethod
+    @DbUtils.connect
+    def create_reviews_table(cls, *args):
+
+        cursor = DbUtils().get_cursor(args)
+
+        reviews_tbl = cls.ReviewTable(
+            id='id SERIAL PRIMARY KEY',
+            picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
+                        f'ON DELETE CASCADE'),
+            reviewer_name='reviewer_name VARCHAR(20)',
+            review_date='review_date TIMESTAMP')
+
+        sql_string = (f'CREATE TABLE {cls.table_reviews} '
+                      f'({reviews_tbl.id}, {reviews_tbl.picture_id}, '
+                      f'{reviews_tbl.reviewer_name}, {reviews_tbl.review_date});')
+
+        print(f'create table {cls.table_reviews}')
         cursor.execute(sql_string)
 
     @classmethod
@@ -305,13 +361,13 @@ class PictureDb:
 
         cursor = DbUtils().get_cursor(args)
 
-        sql_string = f'INSERT INTO {cls.table_name} ('\
-                     f'file_path, file_name, file_modified, file_created, file_size, '\
-                     f'date_picture, md5_signature, camera_make, camera_model, '\
-                     f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '\
-                     f'thumbnail, exif) '\
-                     f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '\
-                     f'%s, %s, %s, %s, %s);'
+        sql_string = (f'INSERT INTO {cls.table_pictures} ('
+                      f'file_path, file_name, file_modified, file_created, file_size, '
+                      f'date_picture, md5_signature, camera_make, camera_model, '
+                      f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
+                      f'thumbnail, exif) '
+                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '
+                      f'%s, %s, %s, %s, %s);')
 
         print(f'store meta data for {filename}')
         cursor.execute(sql_string, (
@@ -329,13 +385,13 @@ class PictureDb:
         progress_message = progress_message_generator(
             f'loading picture meta data from {base_folder}')
 
-        sql_string = f'INSERT INTO {cls.table_name} ('\
-                     f'file_path, file_name, file_modified, file_created, file_size, '\
-                     f'date_picture, md5_signature, camera_make, camera_model, '\
-                     f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '\
-                     f'thumbnail, exif) '\
-                     f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '\
-                     f'%s, %s, %s, %s, %s);'
+        sql_string = (f'INSERT INTO {cls.table_pictures} ('
+                      f'file_path, file_name, file_modified, file_created, file_size, '
+                      f'date_picture, md5_signature, camera_make, camera_model, '
+                      f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
+                      f'thumbnail, exif) '
+                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '
+                      f'%s, %s, %s, %s, %s);')
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
@@ -364,7 +420,7 @@ class PictureDb:
     def load_picture_meta(cls, _id, *args):
         cursor = DbUtils().get_cursor(args)
 
-        sql_string = f'SELECT * FROM {cls.table_name} where id = \'{_id}\';'
+        sql_string = f'SELECT * FROM {cls.table_pictures} where id = \'{_id}\';'
         print(f'load meta data for id {_id}')
         cursor.execute(sql_string)
 
@@ -436,8 +492,8 @@ class PictureDb:
                 pic_meta = cls.get_pic_meta(full_file_name)
 
                 # check on md5_signature
-                sql_string = f'select id from {cls.table_name} where '\
-                            f'\'{pic_meta.md5_signature}\'=md5_signature'
+                sql_string = (f'select id from {cls.table_pictures} where '
+                              f'\'{pic_meta.md5_signature}\'=md5_signature')
                 cursor.execute(sql_string)
                 if cursor.fetchone():
                     log_lines.append(f'{full_file_name} already in database: '
@@ -446,8 +502,8 @@ class PictureDb:
 
                 # check on picture dates
                 if pic_meta.date_picture:
-                    sql_string = f'select id from {cls.table_name} where '\
-                                f'date_picture = \'{pic_meta.date_picture}\''
+                    sql_string = (f'select id from {cls.table_pictures} where '
+                                  f'date_picture = \'{pic_meta.date_picture}\'')
                     cursor.execute(sql_string)
                     if cursor.fetchone():
                         log_lines.append(f'{full_file_name} seems already in database: '
@@ -455,8 +511,8 @@ class PictureDb:
                         continue
 
                 else:
-                    sql_string = f'select id from {cls.table_name} where '\
-                                 f'file_modified = \'{pic_meta.file_modified}\''
+                    sql_string = (f'select id from {cls.table_pictures} where '
+                                  f'file_modified = \'{pic_meta.file_modified}\'')
                     cursor.execute(sql_string)
                     if cursor.fetchone():
                         log_lines.append(f'{full_file_name} seems already in database: '
@@ -464,8 +520,8 @@ class PictureDb:
                         continue
 
                 # check on file size
-                sql_string = f'select id from {cls.table_name} where '\
-                             f'file_size = \'{pic_meta.file_size}\''
+                sql_string = (f'select id from {cls.table_pictures} where '
+                              f'file_size = \'{pic_meta.file_size}\'')
                 cursor.execute(sql_string)
                 if cursor.fetchone():
                     log_lines.append(f'{full_file_name} seems already in database: '
@@ -487,16 +543,17 @@ class PictureDb:
     @DbUtils.connect
     def delete_ids(cls, deleted_ids, *args):
         cursor = DbUtils().get_cursor(args)
-        sql_string = f'delete from {cls.table_name} where id=any(array{deleted_ids})'
+        sql_string = f'delete from {cls.table_pictures} where id=any(array{deleted_ids})'
         cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
     def remove_duplicate_pics(cls, deleted_folder, *args, method='md5'):
-        '''  sort out duplicate pictures by either using the md5_signature or TODO picture
+        '''  sort out duplicate pictures by either using the md5_signature or picture
              date.
         '''
         utils = DbUtils()
+        reviewer_name, review_date = utils.get_name_and_date()
 
         if method == 'md5':
             method = 'md5_signature'
@@ -514,15 +571,15 @@ class PictureDb:
             f.write(f'===> Remove duplicates with method \'{method}\': {c_time}\n')
 
         cursor = utils.get_cursor(args)
-        sql_string = f'select {method} from {cls.table_name} where {method} in '\
-                     f'(select {method} from {cls.table_name} group by {method} '\
-                     f'having count(*) > 1) order by id'
+        sql_string = (f'select {method} from {cls.table_pictures} where {method} in '
+                      f'(select {method} from {cls.table_pictures} group by {method} '
+                      f'having count(*) > 1) order by id')
         cursor.execute(sql_string)
         list_duplicates = {item[0] for item in cursor.fetchall()}
 
         for item in list_duplicates:
-            sql_string = f'select id, file_path, file_name, thumbnail '\
-                         f'from {cls.table_name} where {method}=\'{item}\''
+            sql_string = (f'select id, file_path, file_name, thumbnail '
+                          f'from {cls.table_pictures} where {method}=\'{item}\'')
             cursor.execute(sql_string)
             pic_selection = []
             choices = []
@@ -535,7 +592,8 @@ class PictureDb:
                                       'file_name': pic_tuple[2],
                                       'thumbnail': pic_file})
 
-            if method == 'date_picture' and len(choices) > 2:
+            if method == 'date_picture' and len(choices) > 4:
+                print('too many pics tp select from')
                 continue
 
             pic_array = {'array': [],
@@ -546,16 +604,22 @@ class PictureDb:
                       f'[{os.path.join(pic.get("file_path"), pic.get("file_name"))}]')
                 image_array = np.array(Image.open(pic.get('thumbnail')))
                 pic_array['size'].append(image_array.size)
-                pic_array['array'].append(image_array)
-
-            # check if all array sizes are the same if not skip and continue
-            if not all(val == pic_array['size'][0] for val in pic_array['size']):
-                continue
+                pic_array['array'].append(utils.pad_with_zeros(image_array, 200))
 
             Image.fromarray(np.hstack(pic_array['array'])).show()
 
+            # -1 skip removal, 0 quit method, 1..n pictures index to be removed
+            # for skip removal update the reviews table
             answer_keep = utils.get_answer(choices)
             if answer_keep == -1:
+                for pic in pic_selection:
+                    print(pic.get('id'))
+                    sql_string = (f'INSERT INTO {cls.table_reviews} ('
+                                  f'picture_id, reviewer_name, review_date) '
+                                  f'VALUES (%s, %s, %s);')
+                    cursor.execute(
+                        sql_string, (pic.get('id'), reviewer_name, review_date))
+
                 continue
 
             if answer_keep == 0:
@@ -568,7 +632,13 @@ class PictureDb:
                     deleted_ids.append(pic.get('id'))
                     _from = os.path.join(pic.get('file_path'), pic.get('file_name'))
                     _to = os.path.join(deleted_folder, pic.get('file_name'))
-                    shutil.move(_from, _to)
+
+                    try:
+                        shutil.move(_from, _to)
+                    except FileNotFoundError:
+                        log_line = (f'file not in folder, id: {pic.get("id")}, '
+                                    f'file_name: {_from}')
+                        continue
 
                     log_line = f'file deleted, id: {pic.get("id")}, file_name: {_from}'
                     print(log_line)
@@ -581,3 +651,34 @@ class PictureDb:
             with open(log_file, 'at') as f:
                 for line in log_lines:
                     f.write(line + '\n')
+
+    @classmethod
+    @DbUtils.connect
+    def test_thumbnail(cls, *args):
+
+        utils = DbUtils()
+        cursor = utils.get_cursor(args)
+
+        sql_string = (f'select file_name, thumbnail from {cls.table_pictures} '
+                      f'where file_name=\'20120706_171706 (1).JPG\'')
+        cursor.execute(sql_string)
+        picture_1 = cursor.fetchall()[0]
+        pic_file = io.BytesIO(picture_1[1].encode(Exif().codec))
+        image_array_1 = np.array(Image.open(pic_file))
+
+        sql_string = (f'select file_name, thumbnail from {cls.table_pictures} '
+                      f'where file_name=\'20120706_171706.JPG\'')
+        cursor.execute(sql_string)
+        picture_2 = cursor.fetchall()[0]
+        pic_file = io.BytesIO(picture_2[1].encode(Exif().codec))
+        image_array_2 = np.array(Image.open(pic_file))
+
+        image_1_padded = utils.pad_with_zeros(image_array_1, 200)
+        image_2_padded = utils.pad_with_zeros(image_array_2, 200)
+
+        images = []
+        images.append(image_1_padded)
+        images.append(image_2_padded)
+        Image.fromarray(np.hstack(images)).show()
+
+        input('wait')
