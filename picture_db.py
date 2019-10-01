@@ -109,7 +109,6 @@ class DbUtils:
                 cursor = connection.cursor()
                 result = func(*args, cursor, **kwargs)
                 connection.commit()
-                print('sql action succes')
 
             except psycopg2.Error as error:
                 print(f'error while connect to PostgreSQL {cls.database}: '
@@ -119,7 +118,6 @@ class DbUtils:
                 if connection:
                     cursor.close()
                     connection.close()
-                    print(f'PostgreSQL connection to {cls.database} is closed')
 
             return result
 
@@ -136,26 +134,33 @@ class DbUtils:
 
     @staticmethod
     def get_answer(choices):
-        ''' returns either:
-            1, 2, or n : choices to keep
-            0 : exit function
-            -1 : skip item
+        ''' arguments:
+            choices: list of picture numbers to be able to delete
+
+            returns a list, either:
+            [1, 2, ..., n] : choices of pictures to delete
+            [0]  : exit function
+            [-1] : skip item
         '''
-        answer_keep = -2
-        while answer_keep -1 not in choices and answer_keep not in [-1, 0]:
-            answer_keep = input('Keep picture number (press 0 to quit, '
-                                'space to skip): ')
-            if answer_keep == ' ':
-                answer_keep = -1
+        answer_delete = []
+        while (not (any(val in [-1, 0] for val in answer_delete) and
+                    len(answer_delete) == 1) and
+               (not any(val in choices for val in answer_delete))):
 
-            else:
-                try:
-                    answer_keep = int(answer_keep)
+            _answer = input('Delete picture numbers [separated by spaces] '
+                            '(press 0 to quit, space to skip): ')
 
-                except ValueError:
-                    answer_keep = -2
+            if _answer == ' ':
+                _answer = '-1'
 
-        return answer_keep
+            answer_delete = _answer.replace(',', ' ').split()
+            try:
+                answer_delete = [int(val) for val in _answer.replace(',', ' ').split()]
+
+            except ValueError:
+                pass
+
+        return answer_delete
 
     @staticmethod
     def pad_with_zeros(_array, size):
@@ -170,14 +175,14 @@ class DbUtils:
         return array_padded
 
     @staticmethod
-    def get_name_and_date():
+    def get_name():
         valid = False
         while not valid:
             name = input('Please give your name: ')
             if len(name) > 5:
                 valid = True
 
-        return name, datetime.datetime.now()
+        return name
 
 
 class PictureDb:
@@ -354,6 +359,26 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
+    def review_required(cls, accepted_review_date, picture_id, *args):
+
+        utils = DbUtils()
+        cursor = utils.get_cursor(args)
+
+        sql_string = (f'select review_date from {cls.table_reviews} '
+                      f'where picture_id={picture_id}')
+        cursor.execute(sql_string)
+        latest_review_date = datetime.datetime(1800, 1, 1)
+        for review_date in cursor.fetchall():
+            if review_date[0] > latest_review_date:
+                latest_review_date = review_date[0]
+
+        if latest_review_date > accepted_review_date:
+            return False
+        else:
+            return True
+
+    @classmethod
+    @DbUtils.connect
     def store_picture_meta(cls, filename, *args):
         pic_meta = cls.get_pic_meta(filename)
         if not pic_meta.file_name:
@@ -412,8 +437,6 @@ class PictureDb:
                         pic_meta.exif))
 
                     next(progress_message)
-
-        print()
 
     @classmethod
     @DbUtils.connect
@@ -548,12 +571,26 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def remove_duplicate_pics(cls, deleted_folder, *args, method='md5'):
+    def update_reviews(cls, pic_selection, reviewer_name, *args):
+        cursor = DbUtils().get_cursor(args)
+
+        for pic in pic_selection:
+            sql_string = (f'INSERT INTO {cls.table_reviews} ('
+                          f'picture_id, reviewer_name, review_date) '
+                          f'VALUES (%s, %s, %s);')
+            cursor.execute(
+                sql_string, (pic.get('id'), reviewer_name,
+                             datetime.datetime.now()))
+
+    @classmethod
+    @DbUtils.connect
+    def remove_duplicate_pics(cls, deleted_folder, *args, method='md5',
+                              accepted_review_date=datetime.datetime(1900, 1, 1)):
         '''  sort out duplicate pictures by either using the md5_signature or picture
              date.
         '''
         utils = DbUtils()
-        reviewer_name, review_date = utils.get_name_and_date()
+        reviewer_name = utils.get_name()
 
         if method == 'md5':
             method = 'md5_signature'
@@ -581,26 +618,33 @@ class PictureDb:
             sql_string = (f'select id, file_path, file_name, thumbnail '
                           f'from {cls.table_pictures} where {method}=\'{item}\'')
             cursor.execute(sql_string)
+
             pic_selection = []
             choices = []
             for i, pic_tuple in enumerate(cursor.fetchall()):
-                choices.append(i)
+
+                if not cls.review_required(accepted_review_date, pic_tuple[0]):
+                    print(f'no review required for: '
+                          f'{pic_tuple[0]}, {pic_tuple[1]}, {pic_tuple[2]}')
+                    continue
+                else:
+                    pass
+
+                choices.append(i + 1)
                 pic_file = io.BytesIO(pic_tuple[3].encode(Exif().codec))
-                pic_selection.append({'index': i,
+                pic_selection.append({'index': i + 1,
                                       'id': pic_tuple[0],
                                       'file_path': pic_tuple[1],
                                       'file_name': pic_tuple[2],
                                       'thumbnail': pic_file})
 
-            if method == 'date_picture' and len(choices) > 4:
-                print('too many pics tp select from')
+            if not pic_selection:
                 continue
 
-            pic_array = {'array': [],
-                         'size': []}
             print('-'*80)
+            pic_array = {'array': [], 'size': []}
             for pic in pic_selection:
-                print(f'[{pic.get("index") + 1}] '\
+                print(f'[{pic.get("index")}] '
                       f'[{os.path.join(pic.get("file_path"), pic.get("file_name"))}]')
                 image_array = np.array(Image.open(pic.get('thumbnail')))
                 pic_array['size'].append(image_array.size)
@@ -609,76 +653,61 @@ class PictureDb:
             Image.fromarray(np.hstack(pic_array['array'])).show()
 
             # -1 skip removal, 0 quit method, 1..n pictures index to be removed
-            # for skip removal update the reviews table
-            answer_keep = utils.get_answer(choices)
-            if answer_keep == -1:
-                for pic in pic_selection:
-                    print(pic.get('id'))
-                    sql_string = (f'INSERT INTO {cls.table_reviews} ('
-                                  f'picture_id, reviewer_name, review_date) '
-                                  f'VALUES (%s, %s, %s);')
-                    cursor.execute(
-                        sql_string, (pic.get('id'), reviewer_name, review_date))
+            # in case of skip, update the reviews table
+            answer_delete = utils.get_answer(choices)
+            if answer_delete[0] == -1:
+                cls.update_reviews(pic_selection, reviewer_name)
 
-                continue
-
-            if answer_keep == 0:
+            elif answer_delete[0] == 0:
                 return
 
-            log_lines = []
-            deleted_ids = []
-            for pic in pic_selection:
-                if pic.get('index') != answer_keep - 1:
-                    deleted_ids.append(pic.get('id'))
-                    _from = os.path.join(pic.get('file_path'), pic.get('file_name'))
-                    _to = os.path.join(deleted_folder, pic.get('file_name'))
+            else:
+                log_lines = []
+                deleted_ids = []
+                for pic in pic_selection:
+                    if pic.get('index') in answer_delete:
+                        deleted_ids.append(pic.get('id'))
+                        _from = os.path.join(pic.get('file_path'), pic.get('file_name'))
+                        _to = os.path.join(deleted_folder, pic.get('file_name'))
 
-                    try:
-                        shutil.move(_from, _to)
-                    except FileNotFoundError:
-                        log_line = (f'file not in folder, id: {pic.get("id")}, '
-                                    f'file_name: {_from}')
-                        continue
+                        try:
+                            shutil.move(_from, _to)
+                            log_line = (f'file deleted, id: {pic.get("id")}, '
+                                        f'file_name: {_from}')
+                        except FileNotFoundError:
+                            log_line = (f'file not in folder, id: {pic.get("id")}, '
+                                        f'file_name: {_from}')
 
-                    log_line = f'file deleted, id: {pic.get("id")}, file_name: {_from}'
-                    print(log_line)
-                    log_lines.append(log_line)
+                        print(log_line)
+                        log_lines.append(log_line)
 
-            # call seperately to make sure change to db is committed on
-            # return of this function
-            cls.delete_ids(deleted_ids)
+                # call seperately to make sure change to db is committed on
+                # return of this function
+                cls.delete_ids(deleted_ids)
 
-            with open(log_file, 'at') as f:
-                for line in log_lines:
-                    f.write(line + '\n')
+                with open(log_file, 'at') as f:
+                    for line in log_lines:
+                        f.write(line + '\n')
 
     @classmethod
     @DbUtils.connect
-    def test_thumbnail(cls, *args):
+    def test_review_date(cls, *args,
+                         accepted_review_date=datetime.datetime(1900, 1, 1)):
 
         utils = DbUtils()
         cursor = utils.get_cursor(args)
 
-        sql_string = (f'select file_name, thumbnail from {cls.table_pictures} '
-                      f'where file_name=\'20120706_171706 (1).JPG\'')
+        # check if already reviewed
+        sql_string = (f'select review_date from {cls.table_reviews} '
+                      f'where picture_id=16675')
         cursor.execute(sql_string)
-        picture_1 = cursor.fetchall()[0]
-        pic_file = io.BytesIO(picture_1[1].encode(Exif().codec))
-        image_array_1 = np.array(Image.open(pic_file))
+        latest_review_date = datetime.datetime(1800, 1, 1)
+        for review_date in cursor.fetchall():
+            if review_date[0] > latest_review_date:
+                latest_review_date = review_date[0]
+        print(f'review date: {latest_review_date}')
 
-        sql_string = (f'select file_name, thumbnail from {cls.table_pictures} '
-                      f'where file_name=\'20120706_171706.JPG\'')
-        cursor.execute(sql_string)
-        picture_2 = cursor.fetchall()[0]
-        pic_file = io.BytesIO(picture_2[1].encode(Exif().codec))
-        image_array_2 = np.array(Image.open(pic_file))
-
-        image_1_padded = utils.pad_with_zeros(image_array_1, 200)
-        image_2_padded = utils.pad_with_zeros(image_array_2, 200)
-
-        images = []
-        images.append(image_1_padded)
-        images.append(image_2_padded)
-        Image.fromarray(np.hstack(images)).show()
-
-        input('wait')
+        if latest_review_date and latest_review_date > accepted_review_date:
+            print('already reviewed')
+        else:
+            print('to be reviewed')

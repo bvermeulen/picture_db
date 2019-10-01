@@ -1,3 +1,4 @@
+import datetime
 from picture_db import PictureDb
 
 picdb = PictureDb()
@@ -50,4 +51,4 @@ if __name__ == '__main__':
     # run_create_reviews_table()
     # run_delete_reviews_table()
     run_remove_duplicates(method='date')
-    # picdb.test_thumbnail()
+    # picdb.test_review_date(accepted_review_date=datetime.datetime(2019, 9, 30))
