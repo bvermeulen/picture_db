@@ -163,23 +163,11 @@ class DbUtils:
         return answer_delete
 
     @staticmethod
-    def pad_with_zeros(_array, size):
-        array_padded = np.ones((size, size, 3), dtype=np.uint8)*200
-        for i in range(array_padded.shape[0]):
-            for j in range(array_padded.shape[1]):
-                try:
-                    array_padded[i, j] = _array[i, j]
-                except IndexError:
-                    pass
-
-        return array_padded
-
-    @staticmethod
     def get_name():
         valid = False
         while not valid:
             name = input('Please give your name: ')
-            if len(name) > 5:
+            if 5 < len(name) and len(name) < 20:
                 valid = True
 
         return name
@@ -642,15 +630,21 @@ class PictureDb:
                 continue
 
             print('-'*80)
-            pic_array = {'array': [], 'size': []}
+            pic_arrays = []
             for pic in pic_selection:
+                height, width = (200, 200)
+                array_padded = np.ones((height, width, 3), dtype=np.uint8)*200
+
                 print(f'[{pic.get("index")}] '
                       f'[{os.path.join(pic.get("file_path"), pic.get("file_name"))}]')
                 image_array = np.array(Image.open(pic.get('thumbnail')))
-                pic_array['size'].append(image_array.size)
-                pic_array['array'].append(utils.pad_with_zeros(image_array, 200))
 
-            Image.fromarray(np.hstack(pic_array['array'])).show()
+                height = min(image_array.shape[0], height)
+                width = min(image_array.shape[1], width)
+                array_padded[:height, :width, :] = image_array[:height, :width, :]
+                pic_arrays.append(array_padded)
+
+            Image.fromarray(np.hstack(pic_arrays)).show()
 
             # -1 skip removal, 0 quit method, 1..n pictures index to be removed
             # in case of skip, update the reviews table
