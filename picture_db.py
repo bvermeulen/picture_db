@@ -167,7 +167,7 @@ class DbUtils:
         valid = False
         while not valid:
             name = input('Please give your name: ')
-            if 5 < len(name) and len(name) < 20:
+            if 5 < len(name) < 20:
                 valid = True
 
         return name
@@ -175,17 +175,21 @@ class DbUtils:
 
 class PictureDb:
     table_pictures = 'pictures'
+    table_files = 'files'
     table_reviews = 'reviews'
 
     PicturesTable = recordtype('PicturesTable',
-                               'id, file_path, file_name,'
-                               'file_modified, file_created, file_size,'
-                               'date_picture, md5_signature, camera_make, camera_model,'
-                               'gps_latitude, gps_longitude, gps_altitude,'
-                               'gps_img_direction, thumbnail, exif')
+                               'id, date_picture, md5_signature, camera_make, '
+                               'camera_model, gps_latitude, gps_longitude, '
+                               'gps_altitude, gps_img_direction, thumbnail, exif')
+
+    FilesTable = recordtype('FilesTable',
+                            'id, picture_id, file_path, file_name, file_modified, '
+                            'file_created, file_size, file_checked')
 
     ReviewTable = recordtype('ReviewTable',
                              'id, picture_id, reviewer_name, review_date')
+
 
     @classmethod
     @DbUtils.connect
@@ -195,6 +199,15 @@ class PictureDb:
         sql_string = f'drop table {cls.table_pictures}'
         cursor.execute(sql_string)
         print(f'delete table {cls.table_pictures}')
+
+    @classmethod
+    @DbUtils.connect
+    def delete_files_table(cls, *args):
+        cursor = DbUtils().get_cursor(args)
+
+        sql_string = f'drop table {cls.table_files}'
+        cursor.execute(sql_string)
+        print(f'delete table {cls.table_files}')
 
     @classmethod
     @DbUtils.connect
@@ -212,11 +225,6 @@ class PictureDb:
 
         pics_tbl = cls.PicturesTable(
             id='id SERIAL PRIMARY KEY',
-            file_path='file_path VARCHAR(250)',
-            file_name='file_name VARCHAR(250)',
-            file_modified='file_modified TIMESTAMP',
-            file_created='file_created TIMESTAMP',
-            file_size='file_size INTEGER',
             date_picture='date_picture TIMESTAMP',
             md5_signature='md5_signature VARCHAR(32)',
             camera_make='camera_make VARCHAR(50)',
@@ -229,28 +237,50 @@ class PictureDb:
             exif='exif JSON')
 
         sql_string = (f'CREATE TABLE {cls.table_pictures}'
-                      f'({pics_tbl.id}, {pics_tbl.file_path}, {pics_tbl.file_name}, '
-                      f'{pics_tbl.file_modified}, {pics_tbl.file_created}, '
-                      f'{pics_tbl.file_size}, {pics_tbl.date_picture}, '
-                      f'{pics_tbl.md5_signature}, '
-                      f'{pics_tbl.camera_make}, {pics_tbl.camera_model}, '
-                      f'{pics_tbl.gps_latitude}, {pics_tbl.gps_longitude}, '
-                      f'{pics_tbl.gps_altitude}, {pics_tbl.gps_img_direction}, '
-                      f'{pics_tbl.thumbnail}, {pics_tbl.exif});')
+                      f'({pics_tbl.id}, {pics_tbl.date_picture}, '
+                      f'{pics_tbl.md5_signature}, {pics_tbl.camera_make}, '
+                      f'{pics_tbl.camera_model}, {pics_tbl.gps_latitude}, '
+                      f'{pics_tbl.gps_longitude}, {pics_tbl.gps_altitude}, '
+                      f'{pics_tbl.gps_img_direction}, {pics_tbl.thumbnail}, '
+                      f'{pics_tbl.exif});')
 
         print(f'create table {cls.table_pictures}')
         cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
-    def create_reviews_table(cls, *args):
+    def create_files_table(cls, *args):
+        cursor = DbUtils().get_cursor(args)
 
+        files_tbl = cls.FilesTable(
+            id='id SERIAL PRIMARY KEY',
+            picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
+                        f'ON DELETE CASCADE UNIQUE NOT NULL'),
+            file_path='file_path VARCHAR(250)',
+            file_name='file_name VARCHAR(250)',
+            file_modified='file_modified TIMESTAMP',
+            file_created='file_created TIMESTAMP',
+            file_size='file_size INTEGER',
+            file_checked='file_checked BOOLEAN')
+
+        sql_string = (f'CREATE TABLE {cls.table_files} '
+                      f'({files_tbl.id}, {files_tbl.picture_id}, '
+                      f'{files_tbl.file_path}, {files_tbl.file_name}, '
+                      f'{files_tbl.file_modified}, {files_tbl.file_created}, '
+                      f'{files_tbl.file_size}, {files_tbl.file_checked});')
+
+        print(f'create table {cls.table_files}')
+        cursor.execute(sql_string)
+
+    @classmethod
+    @DbUtils.connect
+    def create_reviews_table(cls, *args):
         cursor = DbUtils().get_cursor(args)
 
         reviews_tbl = cls.ReviewTable(
             id='id SERIAL PRIMARY KEY',
             picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
-                        f'ON DELETE CASCADE'),
+                        f'ON DELETE CASCADE UNIQUE NOT NULL'),
             reviewer_name='reviewer_name VARCHAR(20)',
             review_date='review_date TIMESTAMP')
 
@@ -263,21 +293,22 @@ class PictureDb:
 
     @classmethod
     def get_pic_meta(cls, filename):
-        pic_meta = cls.PicturesTable(*[None]*16)
+        pic_meta = cls.PicturesTable(*[None]*11)
+        file_meta = cls.FilesTable(*[None]*8)
 
         # file attributes
         file_stat = os.stat(filename)
-        pic_meta.file_name = os.path.basename(filename)
-        pic_meta.file_path = os.path.abspath(filename).replace(pic_meta.file_name, '')
-        pic_meta.file_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
-        pic_meta.file_created = datetime.datetime.fromtimestamp(file_stat.st_ctime)
-        pic_meta.file_size = file_stat.st_size
+        file_meta.file_name = os.path.basename(filename)
+        file_meta.file_path = os.path.abspath(filename).replace(file_meta.file_name, '')
+        file_meta.file_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
+        file_meta.file_created = datetime.datetime.fromtimestamp(file_stat.st_ctime)
+        file_meta.file_size = file_stat.st_size
 
         # exif attributes
         try:
             im = Image.open(filename)
         except OSError:
-            return cls.PicturesTable(*[None]*16)
+            return cls.PicturesTable(*[None]*11), cls.FilesTable(*[None]*8)
 
         thumbnail_bytes = b''
 
@@ -343,121 +374,209 @@ class PictureDb:
         pic_meta.md5_signature = hashlib.md5(thumbnail_bytes).hexdigest()
         pic_meta.exif = Exif().exif_to_json(exif_dict)
 
-        return pic_meta
-
-    @classmethod
-    @DbUtils.connect
-    def review_required(cls, accepted_review_date, picture_id, *args):
-
-        utils = DbUtils()
-        cursor = utils.get_cursor(args)
-
-        sql_string = (f'select review_date from {cls.table_reviews} '
-                      f'where picture_id={picture_id}')
-        cursor.execute(sql_string)
-        latest_review_date = datetime.datetime(1800, 1, 1)
-        for review_date in cursor.fetchall():
-            if review_date[0] > latest_review_date:
-                latest_review_date = review_date[0]
-
-        if latest_review_date > accepted_review_date:
-            return False
-        else:
-            return True
+        return pic_meta, file_meta
 
     @classmethod
     @DbUtils.connect
     def store_picture_meta(cls, filename, *args):
-        pic_meta = cls.get_pic_meta(filename)
-        if not pic_meta.file_name:
+        pic_meta, file_meta = cls.get_pic_meta(filename)
+        if not file_meta.file_name:
             return
 
         cursor = DbUtils().get_cursor(args)
+        print(f'store meta data for {filename}')
 
         sql_string = (f'INSERT INTO {cls.table_pictures} ('
-                      f'file_path, file_name, file_modified, file_created, file_size, '
                       f'date_picture, md5_signature, camera_make, camera_model, '
                       f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
                       f'thumbnail, exif) '
-                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '
-                      f'%s, %s, %s, %s, %s);')
+                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                      f'RETURNING id;')
 
-        print(f'store meta data for {filename}')
         cursor.execute(sql_string, (
-            pic_meta.file_path, pic_meta.file_name,
-            pic_meta.file_modified, pic_meta.file_created, pic_meta.file_size,
             pic_meta.date_picture, pic_meta.md5_signature, pic_meta.camera_make,
             pic_meta.camera_model, pic_meta.gps_latitude, pic_meta.gps_longitude,
             pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
             pic_meta.exif))
 
+        picture_id = cursor.fetchone()[0]
+
+        sql_string = (f'INSERT INTO {cls.table_files} ('
+                      f'picture_id, file_path, file_name, file_modified, file_created, '
+                      f'file_size, file_checked) '
+                      f'VALUES (%s, %s, %s, %s, %s, %s, %s);')
+
+        cursor.execute(sql_string, (
+            picture_id, file_meta.file_path, file_meta.file_name, file_meta.file_modified,
+            file_meta.file_created, file_meta.file_size, True))
+
     @classmethod
     @DbUtils.connect
     def store_pictures_base_folder(cls, base_folder, *args):
+        ''' re-initialises the database all previous data will be lost
+        '''
         cursor = DbUtils().get_cursor(args)
         progress_message = progress_message_generator(
             f'loading picture meta data from {base_folder}')
 
-        sql_string = (f'INSERT INTO {cls.table_pictures} ('
-                      f'file_path, file_name, file_modified, file_created, file_size, '
-                      f'date_picture, md5_signature, camera_make, camera_model, '
-                      f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                      f'thumbnail, exif) '
-                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, '
-                      f'%s, %s, %s, %s, %s);')
+        sql_pictures = (f'INSERT INTO {cls.table_pictures} ('
+                        f'date_picture, md5_signature, camera_make, camera_model, '
+                        f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
+                        f'thumbnail, exif) '
+                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                        f'RETURNING id;')
+
+        sql_files = (f'INSERT INTO {cls.table_files} ('
+                     f'picture_id, file_path, file_name, file_modified, file_created, '
+                     f'file_size, file_checked)'
+                     f'VALUES (%s, %s, %s, %s, %s, %s, %s);')
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
 
                 if filename[-4:] in ['.jpg', '.JPG']:
-                    pic_meta = cls.get_pic_meta(os.path.join(foldername, filename))
-                    if not pic_meta.file_name:
+                    pic_meta, file_meta = cls.get_pic_meta(
+                        os.path.join(foldername, filename))
+                    if not file_meta.file_name:
                         continue
 
-                    cursor.execute(sql_string, (
-                        pic_meta.file_path, pic_meta.file_name,
-                        pic_meta.file_modified, pic_meta.file_created,
-                        pic_meta.file_size, pic_meta.date_picture,
-                        pic_meta.md5_signature, pic_meta.camera_make,
-                        pic_meta.camera_model, pic_meta.gps_latitude,
-                        pic_meta.gps_longitude, pic_meta.gps_altitude,
-                        pic_meta.gps_img_direction, pic_meta.thumbnail,
+                    cursor.execute(sql_pictures, (
+                        pic_meta.date_picture, pic_meta.md5_signature,
+                        pic_meta.camera_make, pic_meta.camera_model,
+                        pic_meta.gps_latitude, pic_meta.gps_longitude,
+                        pic_meta.gps_altitude, pic_meta.gps_img_direction,
+                        pic_meta.thumbnail,
                         pic_meta.exif))
 
+                    picture_id = cursor.fetchone()[0]
+
+                    cursor.execute(sql_files, (
+                        picture_id, file_meta.file_path, file_meta.file_name,
+                        file_meta.file_modified, file_meta.file_created,
+                        file_meta.file_size, True))
+
                     next(progress_message)
+
+        print()
+
+    @classmethod
+    @DbUtils.connect
+    def update_pictures_base_folder(cls, base_folder, *args):
+        ''' update pictures in base folder checking differences between database
+            and the files under base_folder
+        '''
+        cursor = DbUtils().get_cursor(args)
+        progress_message = progress_message_generator(
+            f'update picture meta data from {base_folder}')
+        sql_string = (f'UPDATE {cls.table_files} SET file_checked = FALSE;')
+        cursor.execute(sql_string)
+
+        sql_pictures = (f'INSERT INTO {cls.table_pictures} ('
+                        f'date_picture, md5_signature, camera_make, camera_model, '
+                        f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
+                        f'thumbnail, exif) '
+                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                        f'RETURNING id;')
+
+        sql_files = (f'INSERT INTO {cls.table_files} ('
+                     f'picture_id, file_path, file_name, file_modified, file_created, '
+                     f'file_size, file_checked) '
+                     f'VALUES (%s, %s, %s, %s, %s, %s, %s);')
+
+        for foldername, _, filenames in os.walk(base_folder):
+            for filename in filenames:
+
+                if filename[-4:] in ['.jpg', '.JPG']:
+                    sql_foldername = foldername.replace("'", "''")
+                    sql_filename = filename.replace("'", "''")
+
+                    sql_string = (f'SELECT picture_id from {cls.table_files} WHERE '
+                                  f'file_path=\'{sql_foldername}\\\' AND '
+                                  f'file_name=\'{sql_filename}\';')
+                    cursor.execute(sql_string)
+                    try:
+                        picture_id = cursor.fetchone()[0]
+
+                    except TypeError:
+                        picture_id = None
+
+                    # file exists but not in DB -> add to DB
+                    if not picture_id:
+                        pic_meta, file_meta = cls.get_pic_meta(
+                            os.path.join(foldername, filename))
+                        if not file_meta.file_name:
+                            continue
+
+                        cursor.execute(sql_pictures, (
+                            pic_meta.date_picture, pic_meta.md5_signature,
+                            pic_meta.camera_make, pic_meta.camera_model,
+                            pic_meta.gps_latitude, pic_meta.gps_longitude,
+                            pic_meta.gps_altitude, pic_meta.gps_img_direction,
+                            pic_meta.thumbnail,
+                            pic_meta.exif))
+
+                        picture_id = cursor.fetchone()[0]
+
+                        cursor.execute(sql_files, (
+                            picture_id, file_meta.file_path, file_meta.file_name,
+                            file_meta.file_modified, file_meta.file_created,
+                            file_meta.file_size, True))
+
+                    else:
+                        sql_string = (f'UPDATE {cls.table_files} '
+                                      f'SET file_checked = TRUE '
+                                      f'WHERE picture_id={picture_id};')
+                        cursor.execute(sql_string)
+
+                    next(progress_message)
+
+        print()
 
     @classmethod
     @DbUtils.connect
     def load_picture_meta(cls, _id, *args):
         cursor = DbUtils().get_cursor(args)
-
-        sql_string = f'SELECT * FROM {cls.table_pictures} where id = \'{_id}\';'
         print(f'load meta data for id {_id}')
+
+        sql_string = f'SELECT * FROM {cls.table_pictures} where id={_id};'
         cursor.execute(sql_string)
+        data_from_table_pictures = cursor.fetchone()
 
-        data_from_db = cursor.fetchone()
-
-        if not data_from_db:
+        if not data_from_table_pictures:
             return
+        else:
+            sql_string = f'SELECT * FROM {cls.table_files} where picture_id={_id};'
+            cursor.execute(sql_string)
+            data_from_table_files = cursor.fetchone()
+            if not data_from_table_files:
+                return
 
         pic_meta = cls.PicturesTable(
-            id=data_from_db[0],
-            file_path=data_from_db[1],
-            file_name=data_from_db[2],
-            file_modified=data_from_db[3],
-            file_created=data_from_db[4],
-            file_size=data_from_db[5],
-            date_picture=data_from_db[6],
-            md5_signature=data_from_db[7],
-            camera_make=data_from_db[8],
-            camera_model=data_from_db[9],
-            gps_latitude=data_from_db[10],
-            gps_longitude=data_from_db[11],
-            gps_altitude=data_from_db[12],
-            gps_img_direction=data_from_db[13],
-            thumbnail=data_from_db[14],
-            exif=data_from_db[15],
+            id=data_from_table_pictures[0],
+            date_picture=data_from_table_pictures[1],
+            md5_signature=data_from_table_pictures[2],
+            camera_make=data_from_table_pictures[3],
+            camera_model=data_from_table_pictures[4],
+            gps_latitude=data_from_table_pictures[5],
+            gps_longitude=data_from_table_pictures[6],
+            gps_altitude=data_from_table_pictures[7],
+            gps_img_direction=data_from_table_pictures[8],
+            thumbnail=data_from_table_pictures[9],
+            exif=data_from_table_pictures[10],
         )
+
+        file_meta = cls.FilesTable(
+            id=data_from_table_files[0],
+            picture_id=data_from_table_files[1],
+            file_path=data_from_table_files[2],
+            file_name=data_from_table_files[3],
+            file_modified=data_from_table_files[4],
+            file_created=data_from_table_files[5],
+            file_size=data_from_table_files[6],
+        )
+
+        assert pic_meta.id == file_meta.picture_id, \
+            'load_picture_meta: database integrity error'
 
         if pic_meta.thumbnail:
             img_bytes = io.BytesIO(
@@ -465,8 +584,11 @@ class PictureDb:
             im = Image.open(img_bytes)
             im.show()
 
+        for key, val in file_meta._asdict().items():
+            print(f'{key}: {val}')
+
         for key, val in pic_meta._asdict().items():
-            if key == 'thumbnail':
+            if key == 'thumbnail' or key == 'exif':
                 continue
 
             print(f'{key}: {val}')
@@ -500,7 +622,7 @@ class PictureDb:
                 full_file_name = os.path.join(foldername, filename)
                 next(progress_message)
 
-                pic_meta = cls.get_pic_meta(full_file_name)
+                pic_meta, file_meta = cls.get_pic_meta(full_file_name)
 
                 # check on md5_signature
                 sql_string = (f'select id from {cls.table_pictures} where '
@@ -522,22 +644,13 @@ class PictureDb:
                         continue
 
                 else:
-                    sql_string = (f'select id from {cls.table_pictures} where '
-                                  f'file_modified = \'{pic_meta.file_modified}\'')
+                    sql_string = (f'select id from {cls.table_files} where '
+                                  f'file_modified = \'{file_meta.file_modified}\'')
                     cursor.execute(sql_string)
                     if cursor.fetchone():
                         log_lines.append(f'{full_file_name} seems already in database: '
-                                         f'match file modified {pic_meta.file_modified}')
+                                         f'match file modified {file_meta.file_modified}')
                         continue
-
-                # check on file size
-                sql_string = (f'select id from {cls.table_pictures} where '
-                              f'file_size = \'{pic_meta.file_size}\'')
-                cursor.execute(sql_string)
-                if cursor.fetchone():
-                    log_lines.append(f'{full_file_name} seems already in database: '
-                                     f'match file size {pic_meta.file_size}')
-                    continue
 
                 log_lines.append(f'{full_file_name} not found in database '
                                  f'and moved to {destination_folder}')
@@ -549,6 +662,26 @@ class PictureDb:
                 f.write(line + '\n')
 
         print()
+
+    @classmethod
+    @DbUtils.connect
+    def review_required(cls, accepted_review_date, picture_id, *args):
+
+        utils = DbUtils()
+        cursor = utils.get_cursor(args)
+
+        sql_string = (f'SELECT review_date FROM {cls.table_reviews} '
+                      f'WHERE picture_id={picture_id}')
+        cursor.execute(sql_string)
+        latest_review_date = datetime.datetime(1800, 1, 1)
+        for review_date in cursor.fetchall():
+            if review_date[0] > latest_review_date:
+                latest_review_date = review_date[0]
+
+        if latest_review_date > accepted_review_date:
+            return False
+        else:
+            return True
 
     @classmethod
     @DbUtils.connect
@@ -596,35 +729,40 @@ class PictureDb:
             f.write(f'===> Remove duplicates with method \'{method}\': {c_time}\n')
 
         cursor = utils.get_cursor(args)
-        sql_string = (f'select {method} from {cls.table_pictures} where {method} in '
-                      f'(select {method} from {cls.table_pictures} group by {method} '
-                      f'having count(*) > 1) order by id')
+        sql_string = (f'SELECT {method} FROM {cls.table_pictures} WHERE {method} IN '
+                      f'(SELECT {method} FROM {cls.table_pictures} GROUP BY {method} '
+                      f'HAVING count(*) > 1) ORDER BY id')
         cursor.execute(sql_string)
         list_duplicates = {item[0] for item in cursor.fetchall()}
 
         for item in list_duplicates:
-            sql_string = (f'select id, file_path, file_name, thumbnail '
-                          f'from {cls.table_pictures} where {method}=\'{item}\'')
+            sql_string = (f'SELECT id, thumbnail '
+                          f'FROM {cls.table_pictures} WHERE {method}=\'{item}\'')
             cursor.execute(sql_string)
 
             pic_selection = []
             choices = []
             for i, pic_tuple in enumerate(cursor.fetchall()):
 
+                sql_string = (f'SELECT file_path, file_name '
+                              f'FROM {cls.table_files} WHERE picture_id={pic_tuple[0]}')
+                cursor.execute(sql_string)
+                file_path, file_name = cursor.fetchone()
+
                 if not cls.review_required(accepted_review_date, pic_tuple[0]):
                     print(f'no review required for: '
-                          f'{pic_tuple[0]}, {pic_tuple[1]}, {pic_tuple[2]}')
+                          f'{pic_tuple[0]}, {file_path}, {file_name}')
                     continue
                 else:
                     pass
 
                 choices.append(i + 1)
-                pic_file = io.BytesIO(pic_tuple[3].encode(Exif().codec))
-                pic_selection.append({'index': i + 1,
-                                      'id': pic_tuple[0],
-                                      'file_path': pic_tuple[1],
-                                      'file_name': pic_tuple[2],
-                                      'thumbnail': pic_file})
+                pic_selection.append({
+                    'index': i + 1,
+                    'id': pic_tuple[0],
+                    'file_path': file_path,
+                    'file_name': file_name,
+                    'thumbnail': io.BytesIO(pic_tuple[1].encode(Exif().codec))})
 
             if not pic_selection:
                 continue
@@ -682,26 +820,3 @@ class PictureDb:
                 with open(log_file, 'at') as f:
                     for line in log_lines:
                         f.write(line + '\n')
-
-    @classmethod
-    @DbUtils.connect
-    def test_review_date(cls, *args,
-                         accepted_review_date=datetime.datetime(1900, 1, 1)):
-
-        utils = DbUtils()
-        cursor = utils.get_cursor(args)
-
-        # check if already reviewed
-        sql_string = (f'select review_date from {cls.table_reviews} '
-                      f'where picture_id=16675')
-        cursor.execute(sql_string)
-        latest_review_date = datetime.datetime(1800, 1, 1)
-        for review_date in cursor.fetchall():
-            if review_date[0] > latest_review_date:
-                latest_review_date = review_date[0]
-        print(f'review date: {latest_review_date}')
-
-        if latest_review_date and latest_review_date > accepted_review_date:
-            print('already reviewed')
-        else:
-            print('to be reviewed')

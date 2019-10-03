@@ -1,16 +1,19 @@
-# import datetime
+import datetime
 from picture_db import PictureDb
 
 picdb = PictureDb()
-
+# BASE_FOLDER = 'd:\\pictures'
+BASE_FOLDER = 'd:\\test_pictures'
 
 def run_delete_tables():
-    picdb.delete_pictures_table()
     picdb.delete_reviews_table()
+    picdb.delete_files_table()
+    picdb.delete_pictures_table()
 
 
 def run_create_tables():
     picdb.create_pictures_table()
+    picdb.create_files_table()
     picdb.create_reviews_table()
 
 
@@ -23,12 +26,11 @@ def run_create_reviews_table():
 
 
 def run_fill_pic_base():
-    base_folder = 'd:\\pictures'
-    picdb.store_pictures_base_folder(base_folder)
+    picdb.store_pictures_base_folder(BASE_FOLDER)
 
 
 def run_load_picture():
-    picdb.load_picture_meta(8147)
+    picdb.load_picture_meta(12500)
 
 
 def run_merge_pictures():
@@ -39,7 +41,13 @@ def run_merge_pictures():
 
 def run_remove_duplicates(method='md5'):
     deleted_folder = 'd:\\Pics_deleted'
-    picdb.remove_duplicate_pics(deleted_folder, method=method)
+    accepted_review_date = datetime.datetime(2019, 10, 1)
+    picdb.remove_duplicate_pics(deleted_folder, method=method,
+                                accepted_review_date=accepted_review_date)
+
+
+def run_update_pic_base():
+    picdb.update_pictures_base_folder(BASE_FOLDER)
 
 
 if __name__ == '__main__':
@@ -50,5 +58,5 @@ if __name__ == '__main__':
     # run_merge_pictures()
     # run_create_reviews_table()
     # run_delete_reviews_table()
-    run_remove_duplicates(method='date')
-    # picdb.test_review_date(accepted_review_date=datetime.datetime(2019, 9, 30))
+    # run_remove_duplicates(method='date')
+    run_update_pic_base()
