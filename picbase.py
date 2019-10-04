@@ -2,8 +2,8 @@ import datetime
 from picture_db import PictureDb
 
 picdb = PictureDb()
-# BASE_FOLDER = 'd:\\pictures'
-BASE_FOLDER = 'd:\\test_pictures'
+BASE_FOLDER = 'd:\\pictures'
+# BASE_FOLDER = 'd:\\test_pictures'
 
 def run_delete_tables():
     picdb.delete_reviews_table()

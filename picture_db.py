@@ -196,7 +196,7 @@ class PictureDb:
     def delete_pictures_table(cls, *args):
         cursor = DbUtils().get_cursor(args)
 
-        sql_string = f'drop table {cls.table_pictures}'
+        sql_string = f'DROP TABLE {cls.table_pictures};'
         cursor.execute(sql_string)
         print(f'delete table {cls.table_pictures}')
 
@@ -205,7 +205,7 @@ class PictureDb:
     def delete_files_table(cls, *args):
         cursor = DbUtils().get_cursor(args)
 
-        sql_string = f'drop table {cls.table_files}'
+        sql_string = f'DROP TABLE {cls.table_files};'
         cursor.execute(sql_string)
         print(f'delete table {cls.table_files}')
 
@@ -214,7 +214,7 @@ class PictureDb:
     def delete_reviews_table(cls, *args):
         cursor = DbUtils().get_cursor(args)
 
-        sql_string = f'drop table {cls.table_reviews}'
+        sql_string = f'DROP TABLE {cls.table_reviews};'
         cursor.execute(sql_string)
         print(f'delete table {cls.table_reviews}')
 
@@ -236,7 +236,7 @@ class PictureDb:
             thumbnail='thumbnail JSON',
             exif='exif JSON')
 
-        sql_string = (f'CREATE TABLE {cls.table_pictures}'
+        sql_string = (f'CREATE TABLE {cls.table_pictures} '
                       f'({pics_tbl.id}, {pics_tbl.date_picture}, '
                       f'{pics_tbl.md5_signature}, {pics_tbl.camera_make}, '
                       f'{pics_tbl.camera_model}, {pics_tbl.gps_latitude}, '
@@ -461,9 +461,8 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def update_pictures_base_folder(cls, base_folder, *args):
-        ''' update pictures in base folder checking differences between database
-            and the files under base_folder
+    def check_and_add_files(cls, base_folder, *args):
+        ''' check if files are in database, if they are not then add
         '''
         cursor = DbUtils().get_cursor(args)
         progress_message = progress_message_generator(
@@ -490,7 +489,7 @@ class PictureDb:
                     sql_foldername = foldername.replace("'", "''")
                     sql_filename = filename.replace("'", "''")
 
-                    sql_string = (f'SELECT picture_id from {cls.table_files} WHERE '
+                    sql_string = (f'SELECT picture_id FROM {cls.table_files} WHERE '
                                   f'file_path=\'{sql_foldername}\\\' AND '
                                   f'file_name=\'{sql_filename}\';')
                     cursor.execute(sql_string)
@@ -534,18 +533,37 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
+    def check_and_remove_non_existing_files(cls, *args):
+        ''' check if files are in the database, but not on file, in that case remove
+            from the database
+        '''
+        cursor = DbUtils().get_cursor(args)
+
+        sql_string = (
+            f'SELECT picture_id FROM {cls.table_files} WHERE NOT file_checked;')
+        cursor.execute(sql_string)
+        deleted_ids = [id[0] for id in cursor.fetchall()]
+        cls.delete_ids(deleted_ids)
+
+    @classmethod
+    def update_pictures_base_folder(cls, base_folder):
+        cls.check_and_add_files(base_folder)
+        cls.check_and_remove_non_existing_files()
+
+    @classmethod
+    @DbUtils.connect
     def load_picture_meta(cls, _id, *args):
         cursor = DbUtils().get_cursor(args)
         print(f'load meta data for id {_id}')
 
-        sql_string = f'SELECT * FROM {cls.table_pictures} where id={_id};'
+        sql_string = f'SELECT * FROM {cls.table_pictures} WHERE id={_id};'
         cursor.execute(sql_string)
         data_from_table_pictures = cursor.fetchone()
 
         if not data_from_table_pictures:
             return
         else:
-            sql_string = f'SELECT * FROM {cls.table_files} where picture_id={_id};'
+            sql_string = f'SELECT * FROM {cls.table_files} WHERE picture_id={_id};'
             cursor.execute(sql_string)
             data_from_table_files = cursor.fetchone()
             if not data_from_table_files:
@@ -573,6 +591,7 @@ class PictureDb:
             file_modified=data_from_table_files[4],
             file_created=data_from_table_files[5],
             file_size=data_from_table_files[6],
+            file_checked=data_from_table_files[7],
         )
 
         assert pic_meta.id == file_meta.picture_id, \
@@ -625,8 +644,8 @@ class PictureDb:
                 pic_meta, file_meta = cls.get_pic_meta(full_file_name)
 
                 # check on md5_signature
-                sql_string = (f'select id from {cls.table_pictures} where '
-                              f'\'{pic_meta.md5_signature}\'=md5_signature')
+                sql_string = (f'SELECT id FROM {cls.table_pictures} WHERE '
+                              f'md5_signature = \'{pic_meta.md5_signature}\';')
                 cursor.execute(sql_string)
                 if cursor.fetchone():
                     log_lines.append(f'{full_file_name} already in database: '
@@ -635,8 +654,8 @@ class PictureDb:
 
                 # check on picture dates
                 if pic_meta.date_picture:
-                    sql_string = (f'select id from {cls.table_pictures} where '
-                                  f'date_picture = \'{pic_meta.date_picture}\'')
+                    sql_string = (f'SELECT id FROM {cls.table_pictures} WHERE '
+                                  f'date_picture = \'{pic_meta.date_picture}\';')
                     cursor.execute(sql_string)
                     if cursor.fetchone():
                         log_lines.append(f'{full_file_name} seems already in database: '
@@ -644,8 +663,8 @@ class PictureDb:
                         continue
 
                 else:
-                    sql_string = (f'select id from {cls.table_files} where '
-                                  f'file_modified = \'{file_meta.file_modified}\'')
+                    sql_string = (f'SELECT id FROM {cls.table_files} WHERE '
+                                  f'file_modified = \'{file_meta.file_modified}\';')
                     cursor.execute(sql_string)
                     if cursor.fetchone():
                         log_lines.append(f'{full_file_name} seems already in database: '
@@ -671,7 +690,7 @@ class PictureDb:
         cursor = utils.get_cursor(args)
 
         sql_string = (f'SELECT review_date FROM {cls.table_reviews} '
-                      f'WHERE picture_id={picture_id}')
+                      f'WHERE picture_id={picture_id};')
         cursor.execute(sql_string)
         latest_review_date = datetime.datetime(1800, 1, 1)
         for review_date in cursor.fetchall():
@@ -686,9 +705,11 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def delete_ids(cls, deleted_ids, *args):
-        cursor = DbUtils().get_cursor(args)
-        sql_string = f'delete from {cls.table_pictures} where id=any(array{deleted_ids})'
-        cursor.execute(sql_string)
+        if deleted_ids:
+            cursor = DbUtils().get_cursor(args)
+            sql_string = (f'DELETE FROM {cls.table_pictures} '
+                          f'WHERE id=any(array{deleted_ids});')
+            cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
@@ -731,13 +752,13 @@ class PictureDb:
         cursor = utils.get_cursor(args)
         sql_string = (f'SELECT {method} FROM {cls.table_pictures} WHERE {method} IN '
                       f'(SELECT {method} FROM {cls.table_pictures} GROUP BY {method} '
-                      f'HAVING count(*) > 1) ORDER BY id')
+                      f'HAVING count(*) > 1) ORDER BY id;')
         cursor.execute(sql_string)
         list_duplicates = {item[0] for item in cursor.fetchall()}
 
         for item in list_duplicates:
             sql_string = (f'SELECT id, thumbnail '
-                          f'FROM {cls.table_pictures} WHERE {method}=\'{item}\'')
+                          f'FROM {cls.table_pictures} WHERE {method}=\'{item}\';')
             cursor.execute(sql_string)
 
             pic_selection = []
@@ -745,7 +766,7 @@ class PictureDb:
             for i, pic_tuple in enumerate(cursor.fetchall()):
 
                 sql_string = (f'SELECT file_path, file_name '
-                              f'FROM {cls.table_files} WHERE picture_id={pic_tuple[0]}')
+                              f'FROM {cls.table_files} WHERE picture_id={pic_tuple[0]};')
                 cursor.execute(sql_string)
                 file_path, file_name = cursor.fetchone()
 
