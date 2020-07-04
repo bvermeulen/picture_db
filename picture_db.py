@@ -10,8 +10,11 @@ import piexif
 import psycopg2
 from PIL import Image, ImageShow
 from recordtype import recordtype
+from decouple import config
+import psutil
 
 ImageShow.WindowsViewer.format = 'PNG'
+WindowsDisplay = 'Microsoft.Photos.exe'
 
 
 def progress_message_generator(message):
@@ -61,30 +64,48 @@ class Exif:
             seconds = fractions[2][0] / fractions[2][1]
 
             if fractions[1][0] == 0 and fractions[2][0] == 0:
-                return f'{ref} {degrees:.4f}\u00B0'
+                lat_long_str = f'{ref} {degrees:.4f}\u00B0'
 
             elif fractions[2][0] == 0:
-                return f'{ref} {degrees:.0f}\u00B0 {minutes:.2f}"'
+                lat_long_str = f'{ref} {degrees:.0f}\u00B0 {minutes:.2f}"'
 
             else:
-                return f'{ref} {degrees:.0f}\u00B0 {minutes:.0f}" {seconds:.0f}\''
+                lat_long_str = f'{ref} {degrees:.0f}\u00B0 {minutes:.0f}" {seconds:.0f}\''
+
+            lat_long = degrees + minutes / 60 + seconds / 3600
+            if ref in ['S', 'W', 's', 'w']:
+                lat_long *= -1
+
+            return lat_long_str, lat_long
 
         try:
-            latitude = convert_to_degrees(gps_latitude)
-            longitude = convert_to_degrees(gps_longitude)
+            latitude, lat_val = convert_to_degrees(gps_latitude)
+            longitude, lon_val = convert_to_degrees(gps_longitude)
 
             try:
                 alt_fraction = gps_altitude.get('alt')
                 altitude = f'{alt_fraction[0]/ alt_fraction[1]:.2f}'
+                alt_val = alt_fraction[0] / alt_fraction[1]
 
             except (TypeError, AttributeError, ZeroDivisionError):
                 altitude = '-'
+                alt_val = 0
 
-            return latitude, longitude, altitude
+            return (
+                f'{latitude}, {longitude}, altitude: {altitude}',
+                (lat_val, lon_val, alt_val))
 
         except (TypeError, AttributeError, ZeroDivisionError) as error:
             print(f'unable to convert coordinate: {error}')
-            return None, None, None
+            return None, None
+
+    @staticmethod
+    def remove_display():
+        ''' remove thumbnail picture by killing the display process
+        '''
+        for proc in psutil.process_iter():
+            if proc.name() == WindowsDisplay:
+                proc.kill()
 
     @classmethod
     def exif_to_json(cls, exif_tag_dict):
@@ -99,10 +120,10 @@ class Exif:
 class DbUtils:
     '''  utility methods for database
     '''
-    host = 'localhost'
-    db_user = 'db_tester'
-    db_user_pw = 'db_tester_pw'
-    database = 'picture_base'
+    host = config('DB_HOST')
+    db_user = config('DB_USERNAME')
+    db_user_pw = config('DB_PASSWORD')
+    database = config('DATABASE')
 
     @classmethod
     def connect(cls, func):
@@ -112,7 +133,10 @@ class DbUtils:
                              f'user=\'{cls.db_user}\' password=\'{cls.db_user_pw}\''
             result = None
             try:
-                connection = psycopg2.connect(connect_string)
+                # add ggsencmode='disable' to resolve unsupported frontend protocol
+                # 1234.5679: server supports 2.0 to 3.0
+                # should be fixed on postgresql 12.3
+                connection = psycopg2.connect(connect_string, gssencmode='disable')
                 cursor = connection.cursor()
                 result = func(*args, cursor, **kwargs)
                 connection.commit()
@@ -619,10 +643,11 @@ class PictureDb:
 
             print(f'{key}: {val}')
 
-        latitude, longitude, altitude = Exif().\
-            convert_gps(pic_meta.gps_latitude, pic_meta.gps_longitude,
-                        pic_meta.gps_altitude)
-        print(f'coordinate: {latitude}, {longitude}, altitude: {altitude}')
+        lat_lon_str, lat_lon_val = Exif().convert_gps(
+            pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude)
+        print(f'coordinate: {lat_lon_str}\n'
+              f'value: {lat_lon_val}')
+
 
     @classmethod
     @DbUtils.connect

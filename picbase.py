@@ -1,5 +1,5 @@
 import datetime
-from picture_db import PictureDb
+from picture_db import PictureDb, Exif
 
 picdb = PictureDb()
 BASE_FOLDER = 'd:\\pictures'
@@ -62,6 +62,7 @@ def run_update_pic_base():
 def run_load_pic_by_id():
     while True:
         answer = input("Give me a picture id: ")
+        Exif().remove_display()
         picdb.load_picture_meta(int(answer))
 
 if __name__ == '__main__':
