@@ -30,7 +30,7 @@ def run_fill_pic_base():
 
 
 def run_load_picture():
-    picdb.load_picture_meta(12500)
+    picdb.load_picture_meta(23250)
 
 
 def run_merge_pictures():
@@ -46,9 +46,23 @@ def run_remove_duplicates(method='md5'):
                                 accepted_review_date=accepted_review_date)
 
 
+def run_remove_by_id(start_id, end_id=None):
+    deleted_folder = 'd:\\Pics_deleted'
+    if end_id:
+        picdb.remove_pics_by_id(deleted_folder, start_id, end_id=end_id)
+
+    else:
+        picdb.remove_pics_by_id(deleted_folder, start_id)
+
+
 def run_update_pic_base():
     picdb.update_pictures_base_folder(BASE_FOLDER)
 
+
+def run_load_pic_by_id():
+    while True:
+        answer = input("Give me a picture id: ")
+        picdb.load_picture_meta(int(answer))
 
 if __name__ == '__main__':
     # run_delete_tables()
@@ -58,5 +72,7 @@ if __name__ == '__main__':
     # run_merge_pictures()
     # run_create_reviews_table()
     # run_delete_reviews_table()
-    # run_remove_duplicates(method='date')
-    run_update_pic_base()
+    # run_remove_duplicates(method='date')  # method='md4' or 'date'
+    # run_remove_by_id(99999)
+    # run_update_pic_base()
+    run_load_pic_by_id()

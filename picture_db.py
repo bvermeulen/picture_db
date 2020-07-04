@@ -8,8 +8,10 @@ from functools import wraps
 import numpy as np
 import piexif
 import psycopg2
-from PIL import Image
+from PIL import Image, ImageShow
 from recordtype import recordtype
+
+ImageShow.WindowsViewer.format = 'PNG'
 
 
 def progress_message_generator(message):
@@ -70,8 +72,13 @@ class Exif:
         try:
             latitude = convert_to_degrees(gps_latitude)
             longitude = convert_to_degrees(gps_longitude)
-            alt_fraction = gps_altitude.get('alt')
-            altitude = f'{alt_fraction[0]/ alt_fraction[1]:.2f}'
+
+            try:
+                alt_fraction = gps_altitude.get('alt')
+                altitude = f'{alt_fraction[0]/ alt_fraction[1]:.2f}'
+
+            except (TypeError, AttributeError, ZeroDivisionError):
+                altitude = '-'
 
             return latitude, longitude, altitude
 
@@ -280,7 +287,7 @@ class PictureDb:
         reviews_tbl = cls.ReviewTable(
             id='id SERIAL PRIMARY KEY',
             picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
-                        f'ON DELETE CASCADE UNIQUE NOT NULL'),
+                        f'ON DELETE CASCADE NOT NULL'),
             reviewer_name='reviewer_name VARCHAR(20)',
             review_date='review_date TIMESTAMP')
 
@@ -841,3 +848,60 @@ class PictureDb:
                 with open(log_file, 'at') as f:
                     for line in log_lines:
                         f.write(line + '\n')
+
+    @classmethod
+    @DbUtils.connect
+    def remove_pics_by_id(cls, deleted_folder, start_id, *args, end_id=None):
+        '''  remove pictures that are in dabase with id between start_id and end_id
+             patch needed as google photo may merge duplicate photos
+        '''
+        log_file = os.path.join(deleted_folder, '_delete_pictures_by_id.log')
+        with open(log_file, 'at') as f:
+            c_time = datetime.datetime.now()
+            if end_id:
+                f.write(f'===> Remove pictured by id from '
+                        f'{start_id} to {end_id}: {c_time}\n')
+
+            else:
+                f.write(f'===> Remove pictured by id from '
+                        f'{start_id} until last: {c_time}\n')
+
+        utils = DbUtils()
+        cursor = utils.get_cursor(args)
+        if end_id:
+            sql_string = (f'select id, file_path, file_name from {cls.table_files} '
+                          f'where id between {start_id} and {end_id}')
+
+        else:
+            sql_string = (f'select id, file_path, file_name from {cls.table_files} '
+                          f'where id >= {start_id}')
+
+        cursor.execute(sql_string)
+
+        log_lines = []
+        deleted_ids = []
+        for pic in cursor.fetchall():
+            print(pic)
+            _id = pic[0]
+            _file_path = pic[1]
+            _file_name = pic[2]
+            _from = os.path.join(_file_path, _file_name)
+            _to = os.path.join(deleted_folder, _file_name)
+
+            try:
+                shutil.move(_from, _to)
+                log_line = (f'file deleted, id: {_id}, '
+                            f'file_name: {_from}')
+
+            except FileNotFoundError:
+                log_line = (f'file not in folder, id: {_id}, '
+                            f'file_name: {_from}')
+
+            log_lines.append(log_line)
+            deleted_ids.append(_id)
+
+        cls.delete_ids(deleted_ids)
+
+        with open(log_file, 'at') as f:
+            for line in log_lines:
+                f.write(line + '\n')
