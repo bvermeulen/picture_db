@@ -14,8 +14,18 @@ from recordtype import recordtype
 from decouple import config
 import psutil
 
-ImageShow.WindowsViewer.format = 'PNG'
-WindowsDisplay = 'Microsoft.Photos.exe'
+if os.name == 'nt':
+    ImageShow.WindowsViewer.format = 'PNG'
+    display_process = 'Microsoft.Photos.exe'
+
+elif os.name == 'posix':
+    ImageShow.UnixViewer = 'PNG'
+    display_process = 'eog'
+
+
+else:
+    assert False, f'operating system: {os.name} is not implemented'
+
 EPSG_WGS84 = 4326
 
 
@@ -106,7 +116,7 @@ class Exif:
         ''' remove thumbnail picture by killing the display process
         '''
         for proc in psutil.process_iter():
-            if proc.name() == WindowsDisplay:
+            if proc.name() == display_process:
                 proc.kill()
 
     @classmethod
