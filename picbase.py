@@ -6,19 +6,21 @@ BASE_FOLDER = 'd:\\pictures'
 # BASE_FOLDER = 'd:\\test_pictures'
 
 def run_delete_tables():
-    picdb.delete_reviews_table()
-    picdb.delete_files_table()
-    picdb.delete_pictures_table()
+    picdb.delete_table('reviews')
+    picdb.delete_table('locations')
+    picdb.delete_table('files')
+    picdb.delete_table('pictures')
 
 
 def run_create_tables():
     picdb.create_pictures_table()
     picdb.create_files_table()
+    picdb.create_locations_table()
     picdb.create_reviews_table()
 
 
 def run_delete_reviews_table():
-    picdb.delete_reviews_table()
+    picdb.delete_table('reviews')
 
 
 def run_create_reviews_table():
@@ -65,6 +67,12 @@ def run_load_pic_by_id():
         Exif().remove_display()
         picdb.load_picture_meta(int(answer))
 
+
+def run_pic_gis():
+    picdb.delete_table('locations')
+    picdb.create_locations_table()
+    picdb.populate_locations_table()
+
 if __name__ == '__main__':
     # run_delete_tables()
     # run_create_tables()
@@ -77,3 +85,4 @@ if __name__ == '__main__':
     # run_remove_by_id(99999)
     # run_update_pic_base()
     run_load_pic_by_id()
+    # run_pic_gis()

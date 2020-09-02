@@ -6,6 +6,7 @@ import json
 import os
 from functools import wraps
 import numpy as np
+from shapely.geometry import Point
 import piexif
 import psycopg2
 from PIL import Image, ImageShow
@@ -15,6 +16,7 @@ import psutil
 
 ImageShow.WindowsViewer.format = 'PNG'
 WindowsDisplay = 'Microsoft.Photos.exe'
+EPSG_WGS84 = 4326
 
 
 def progress_message_generator(message):
@@ -208,6 +210,7 @@ class PictureDb:
     table_pictures = 'pictures'
     table_files = 'files'
     table_reviews = 'reviews'
+    table_locations = 'locations'
 
     PicturesTable = recordtype('PicturesTable',
                                'id, date_picture, md5_signature, camera_make, '
@@ -221,33 +224,19 @@ class PictureDb:
     ReviewTable = recordtype('ReviewTable',
                              'id, picture_id, reviewer_name, review_date')
 
+    LocationsTable = recordtype('LocationsTable',
+                                'id, picture_id, date_picture, '
+                                'latitude, longitude, altitude, geom')
+
 
     @classmethod
     @DbUtils.connect
-    def delete_pictures_table(cls, *args):
+    def delete_table(cls, table_name: str, *args):
         cursor = DbUtils().get_cursor(args)
 
-        sql_string = f'DROP TABLE {cls.table_pictures};'
+        sql_string = f'DROP TABLE {table_name};'
         cursor.execute(sql_string)
-        print(f'delete table {cls.table_pictures}')
-
-    @classmethod
-    @DbUtils.connect
-    def delete_files_table(cls, *args):
-        cursor = DbUtils().get_cursor(args)
-
-        sql_string = f'DROP TABLE {cls.table_files};'
-        cursor.execute(sql_string)
-        print(f'delete table {cls.table_files}')
-
-    @classmethod
-    @DbUtils.connect
-    def delete_reviews_table(cls, *args):
-        cursor = DbUtils().get_cursor(args)
-
-        sql_string = f'DROP TABLE {cls.table_reviews};'
-        cursor.execute(sql_string)
-        print(f'delete table {cls.table_reviews}')
+        print(f'delete table {table_name}')
 
     @classmethod
     @DbUtils.connect
@@ -320,6 +309,30 @@ class PictureDb:
                       f'{reviews_tbl.reviewer_name}, {reviews_tbl.review_date});')
 
         print(f'create table {cls.table_reviews}')
+        cursor.execute(sql_string)
+
+    @classmethod
+    @DbUtils.connect
+    def create_locations_table(cls, *args):
+        cursor = DbUtils().get_cursor(args)
+        locs_tbl = cls.LocationsTable(
+            id='id SERIAL PRIMARY KEY',
+            picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
+                        f'ON DELETE CASCADE UNIQUE'),
+            date_picture='date_picture TIMESTAMP NOT NULL',
+            latitude='latitude DOUBLE PRECISION NOT NULL',
+            longitude='longitude DOUBLE PRECISION NOT NULL',
+            altitude='altitude REAL NOT NULL',
+            geom=f'geom geometry(Point, {EPSG_WGS84}) '
+        )
+        sql_string = (
+            f'CREATE TABLE {cls.table_locations} ('
+            f'{locs_tbl.id}, {locs_tbl.picture_id}, {locs_tbl.date_picture}, '
+            f'{locs_tbl.latitude}, {locs_tbl.longitude}, {locs_tbl.altitude}, '
+            f'{locs_tbl.geom} )'
+        )
+
+        print(f'create table {cls.table_locations}')
         cursor.execute(sql_string)
 
     @classmethod
@@ -930,3 +943,57 @@ class PictureDb:
         with open(log_file, 'at') as f:
             for line in log_lines:
                 f.write(line + '\n')
+
+    @classmethod
+    @DbUtils.connect
+    def populate_locations_table(cls, *args):
+
+        cursor = DbUtils().get_cursor(args)
+        sql_string_pictures = (
+            f'select id, date_picture, gps_latitude, gps_longitude, gps_altitude '
+            f'from {cls.table_pictures} '
+        )
+
+        cursor.execute(sql_string_pictures)
+
+        sql_string_locations = (
+            f'INSERT INTO {cls.table_locations} '
+            f'(picture_id, date_picture, latitude, longitude, altitude, geom) '
+            f'VALUES (%s, %s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) '
+        )
+
+        counter = 0
+        for i, pic in enumerate(cursor.fetchall()):
+
+            # if there is a gps_latitude
+            if pic[2]:
+                lat_lon_str, lat_lon_val = Exif().convert_gps(pic[2], pic[3], pic[4])
+                if lat_lon_str:
+
+                    # Point has format (Longitude, Latitude) like (x, y)
+                    point = Point(lat_lon_val[1], lat_lon_val[0])
+
+                    if pic[1]:
+                        date_picture = pic[1]
+
+                    else:
+                        sql_string_files = (
+                            f'select file_modified from {cls.table_files} '
+                            f'where picture_id={pic[0]} '
+                        )
+
+                        cursor.execute(sql_string_files)
+                        date_picture = cursor.fetchone()
+
+                    cursor.execute(
+                        sql_string_locations,
+                        (pic[0], date_picture,
+                         lat_lon_val[0], lat_lon_val[1], lat_lon_val[2],
+                         point.wkb_hex, EPSG_WGS84)
+                    )
+
+                    counter += 1
+                    print(
+                        f'{i:5}: {counter:4} pic id: {pic[0]}, '
+                        f'date: {date_picture}, {lat_lon_str}'
+                    )
