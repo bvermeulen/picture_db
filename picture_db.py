@@ -13,6 +13,12 @@ from PIL import Image, ImageShow
 from recordtype import recordtype
 from decouple import config
 import psutil
+from Utils.plogger import Logger
+
+
+logformat = '%(asctime)s:%(levelname)s:%(message)s'
+Logger.set_logger('.\\picture.log', logformat, 'INFO')
+logger = Logger.getlogger()
 
 if os.name == 'nt':
     ImageShow.WindowsViewer.format = 'PNG'
@@ -27,6 +33,7 @@ else:
     assert False, f'operating system: {os.name} is not implemented'
 
 EPSG_WGS84 = 4326
+DATABASE_PICTURE_SIZE = (600, 600)
 
 
 def progress_message_generator(message):
@@ -364,8 +371,6 @@ class PictureDb:
         except OSError:
             return cls.PicturesTable(*[None]*11), cls.FilesTable(*[None]*8)
 
-        thumbnail_bytes = b''
-
         try:
             exif_dict = piexif.load(im.info.get('exif'))
             exif_dict = Exif().exif_to_tag(exif_dict)
@@ -374,7 +379,6 @@ class PictureDb:
             exif_dict = {}
 
         if exif_dict:
-            thumbnail_bytes = exif_dict.pop('thumbnail').encode(Exif().codec)
             pic_meta.camera_make = exif_dict.get('0th').get('Make')
             if pic_meta.camera_make:
                 pic_meta.camera_make = pic_meta.camera_make.\
@@ -417,15 +421,13 @@ class PictureDb:
             pic_meta.gps_latitude, pic_meta.gps_longitude, \
                 pic_meta.gps_altitude, pic_meta.gps_img_direction = [json.dumps({})]*4
 
-        if not thumbnail_bytes:
-            size = (180, 180)
-            im.thumbnail(size, Image.ANTIALIAS)
-            img_bytes = io.BytesIO()
-            im.save(img_bytes, format='JPEG')
-            thumbnail_bytes = img_bytes.getvalue()
+        im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
+        img_bytes = io.BytesIO()
+        im.save(img_bytes, format='JPEG')
+        picture_bytes = img_bytes.getvalue()
 
-        pic_meta.thumbnail = json.dumps(thumbnail_bytes.decode(Exif().codec))
-        pic_meta.md5_signature = hashlib.md5(thumbnail_bytes).hexdigest()
+        pic_meta.thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
+        pic_meta.md5_signature = hashlib.md5(picture_bytes).hexdigest()
         pic_meta.exif = Exif().exif_to_json(exif_dict)
 
         return pic_meta, file_meta
@@ -1007,3 +1009,54 @@ class PictureDb:
                         f'{i:5}: {counter:4} pic id: {pic[0]}, '
                         f'date: {date_picture}, {lat_lon_str}'
                     )
+
+    @classmethod
+    @DbUtils.connect
+    def replace_thumbnail(cls, base_folder, *args):
+        cursor = DbUtils().get_cursor(args)
+
+        progress_message = progress_message_generator(
+            f'update picture and md5 for {base_folder}')
+
+        for foldername, _, filenames in os.walk(base_folder):
+            for filename in filenames:
+
+                sql_foldername = foldername.replace("'", "''")
+                sql_filename = filename.replace("'", "''")
+
+                sql_str = (f'SELECT picture_id FROM {cls.table_files} '
+                           f'WHERE file_path = \'{sql_foldername}\\\' AND '
+                           f'file_name = \'{sql_filename}\'')
+
+                cursor.execute(sql_str)
+                try:
+                    picture_id = cursor.fetchone()[0]
+
+                except TypeError:
+                    logger.info(
+                        f'file {os.path.join(foldername, filename)} '
+                        f'not found in database')
+                    continue
+
+                try:
+                    im = Image.open(os.path.join(foldername, filename))
+                    im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
+                    img_bytes = io.BytesIO()
+                    im.save(img_bytes, format='JPEG')
+                    picture_bytes = img_bytes.getvalue()
+
+                except Exception as e:  #pylint: disable=broad-except
+                    logger.info(
+                        f'error found: {e} for file {os.path.join(foldername, filename)}')
+                    continue
+
+                thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
+                md5_signature = hashlib.md5(picture_bytes).hexdigest()
+
+                sql_str = (f'UPDATE {cls.table_pictures} '
+                           f'SET md5_signature = (%s), '
+                           f'thumbnail = (%s) '
+                           f'WHERE id= (%s) ')
+
+                cursor.execute(sql_str, (md5_signature, thumbnail, picture_id))
+                next(progress_message)

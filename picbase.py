@@ -73,6 +73,10 @@ def run_pic_gis():
     picdb.create_locations_table()
     picdb.populate_locations_table()
 
+
+def run_replace_picture():
+    picdb.replace_thumbnail(BASE_FOLDER)
+
 if __name__ == '__main__':
     # run_delete_tables()
     # run_create_tables()
@@ -86,3 +90,4 @@ if __name__ == '__main__':
     # run_update_pic_base()
     run_load_pic_by_id()
     # run_pic_gis()
+    # run_replace_picture()
