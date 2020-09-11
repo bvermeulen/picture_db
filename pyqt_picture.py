@@ -1,8 +1,10 @@
 import sys
 import io
+import json
 from PIL import Image
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QApplication, QPushButton,
+    QShortcut
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPixmap
@@ -22,7 +24,7 @@ def pil2pixmap(pil_image):
 
     return QPixmap.fromImage(qimg)
 
-def meta_to_text(pic_meta, file_meta, lat_lon_str):
+def meta_to_text(pic_meta, file_meta, lat_lon_str, index=None):
     try:
         _date_pic = pic_meta.date_picture.strftime("%d-%b-%Y %H:%M:%S")
 
@@ -42,6 +44,10 @@ def meta_to_text(pic_meta, file_meta, lat_lon_str):
         f'file check: {file_meta.file_checked}\n'
         f'rotate: {pic_meta.rotate:3}'
     )
+
+    if index is not None:
+        text += f'\nindex: {index:6}'
+
     return text
 
 
@@ -49,14 +55,12 @@ class PictureShow(QWidget):
 
     def __init__(self, id_list=None):
         super().__init__()
-
         self.picdb = PictureDb()
-        self.rotate = None
 
         if id_list:
             self.id_list = id_list
             self.initUI()
-            self.index = 0
+            self.index = int(input('What is the start index: '))
             self.cntr_select_pic(self.id_list[self.index])
 
         else:
@@ -65,6 +69,8 @@ class PictureShow(QWidget):
             self.image = None
             self.text = None
             self.index = None
+
+        self.rotate = None
 
     def initUI(self):
         vbox = QVBoxLayout()
@@ -108,6 +114,12 @@ class PictureShow(QWidget):
 
         self.setLayout(vbox)
 
+        if self.id_list:
+            QShortcut(Qt.Key_Left, self, self.cntr_prev)
+            QShortcut(Qt.Key_Right, self, self.cntr_next)
+            QShortcut(Qt.Key_Space, self, self.rotate_clockwise)
+            QShortcut(Qt.Key_S, self, self.cntr_save)
+
         self.move(400, 300)
         self.setWindowTitle('Picture ... ')
         self.show()
@@ -116,7 +128,8 @@ class PictureShow(QWidget):
         pixmap = pil2pixmap(self.image)
         self.pic_lbl.setPixmap(pixmap)
 
-        self.text = meta_to_text(self.pic_meta, self.file_meta, self.lat_lon_str)
+        self.text = meta_to_text(
+            self.pic_meta, self.file_meta, self.lat_lon_str, index=self.index)
         self.text_lbl.setText(self.text)
 
     def rotate_clockwise(self):
@@ -176,9 +189,20 @@ class PictureShow(QWidget):
 
 
 def main():
+    #pylint: disable='anomalous-backslash-in-string
+    '''
+    make a selection in psql:
+    \o name.json
+    select json_build_object('id', json_agg(id)) from pictures
+        where gps_latitude ->> 'ref' in ('N', 'S');
+    '''
+    json_filename = './id_with_location.json'
+    with open(json_filename) as json_file:
+        id_list = json.load(json_file)
+
     app = QApplication([])
     # _ = PictureShow()
-    _ = PictureShow(id_list=list(range(27000, 27100)))
+    _ = PictureShow(id_list=id_list['id'])
     sys.exit(app.exec_())
 
 
