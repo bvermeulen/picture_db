@@ -114,8 +114,7 @@ class Exif:
                 f'{latitude}, {longitude}, altitude: {altitude}',
                 (lat_val, lon_val, alt_val))
 
-        except (TypeError, AttributeError, ZeroDivisionError) as error:
-            print(f'unable to convert coordinate: {error}')
+        except (TypeError, AttributeError, ZeroDivisionError) as _:
             return None, None
 
     @staticmethod
@@ -608,22 +607,30 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def load_picture_meta(cls, _id, *args):
+    def load_picture_meta(cls, _id: int, *args):
+        ''' load picture meta data from the data base
+            :arguments:
+                _id: picture id number in database: integer
+            :returns:
+                im: PIL image
+                pic_meta: recordtype PicturesTable
+                file_meta: recordtype FilesTable
+                lat_lon_str: string
+        '''
         cursor = DbUtils().get_cursor(args)
-        print(f'load meta data for id {_id}')
 
         sql_string = f'SELECT * FROM {cls.table_pictures} WHERE id={_id};'
         cursor.execute(sql_string)
         data_from_table_pictures = cursor.fetchone()
 
         if not data_from_table_pictures:
-            return
+            return None, None, None, None
         else:
             sql_string = f'SELECT * FROM {cls.table_files} WHERE picture_id={_id};'
             cursor.execute(sql_string)
             data_from_table_files = cursor.fetchone()
             if not data_from_table_files:
-                return
+                return None, None, None, None
 
         pic_meta = cls.PicturesTable(
             id=data_from_table_pictures[0],
@@ -657,22 +664,11 @@ class PictureDb:
             img_bytes = io.BytesIO(
                 pic_meta.thumbnail.encode(Exif().codec))
             im = Image.open(img_bytes)
-            im.show()
 
-        for key, val in file_meta._asdict().items():
-            print(f'{key}: {val}')
-
-        for key, val in pic_meta._asdict().items():
-            if key == 'thumbnail' or key == 'exif':
-                continue
-
-            print(f'{key}: {val}')
-
-        lat_lon_str, lat_lon_val = Exif().convert_gps(
+        lat_lon_str, _ = Exif().convert_gps(
             pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude)
-        print(f'coordinate: {lat_lon_str}\n'
-              f'value: {lat_lon_val}')
 
+        return im, pic_meta, file_meta, lat_lon_str
 
     @classmethod
     @DbUtils.connect
@@ -1012,6 +1008,27 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
+    def update_thumbnail_image(cls, picture_id, image, *args):
+        cursor = DbUtils().get_cursor(args)
+
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format='JPEG')
+        picture_bytes = img_bytes.getvalue()
+
+        thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
+        md5_signature = hashlib.md5(picture_bytes).hexdigest()
+
+        sql_str = (
+            f'UPDATE {cls.table_pictures} '
+            f'SET md5_signature = (%s), '
+            f'thumbnail = (%s) '
+            f'WHERE id= (%s) '
+        )
+
+        cursor.execute(sql_str, (md5_signature, thumbnail, picture_id))
+
+    @classmethod
+    @DbUtils.connect
     def replace_thumbnail(cls, base_folder, *args):
         cursor = DbUtils().get_cursor(args)
 
@@ -1041,22 +1058,11 @@ class PictureDb:
                 try:
                     im = Image.open(os.path.join(foldername, filename))
                     im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
-                    img_bytes = io.BytesIO()
-                    im.save(img_bytes, format='JPEG')
-                    picture_bytes = img_bytes.getvalue()
 
                 except Exception as e:  #pylint: disable=broad-except
                     logger.info(
                         f'error found: {e} for file {os.path.join(foldername, filename)}')
                     continue
 
-                thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
-                md5_signature = hashlib.md5(picture_bytes).hexdigest()
-
-                sql_str = (f'UPDATE {cls.table_pictures} '
-                           f'SET md5_signature = (%s), '
-                           f'thumbnail = (%s) '
-                           f'WHERE id= (%s) ')
-
-                cursor.execute(sql_str, (md5_signature, thumbnail, picture_id))
+                cls.update_thumbnail_image(picture_id, im)
                 next(progress_message)

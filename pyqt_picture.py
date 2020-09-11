@@ -11,15 +11,18 @@ Website: zetcode.com
 """
 import sys
 import io
+from PIL import Image
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QApplication, QPushButton,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPixmap
-from PIL import Image
+from picture_db import PictureDb
 
 clockwise_symbol = '\u21b6'
 anticlockwise_symbol = '\u21b7'
+right_arrow_symbol = '\u25B6'
+left_arrow_symbol = '\u25C0'
 
 def pil2pixmap(pil_image):
     bytes_img = io.BytesIO()
@@ -30,13 +33,47 @@ def pil2pixmap(pil_image):
 
     return QPixmap.fromImage(qimg)
 
+def meta_to_text(pic_meta, file_meta, lat_lon_str):
+    try:
+        _date_pic = pic_meta.date_picture.strftime("%d-%b-%Y %H:%M:%S")
 
-class Example(QWidget):
+    except AttributeError:
+        _date_pic = None
 
-    def __init__(self):
+    text = (
+        f'id: {pic_meta.id:4}\n'
+        f'file name: {file_meta.file_name}\n'
+        f'file path: {file_meta.file_path}\n'
+        f'file modified: {file_meta.file_modified.strftime("%d-%b-%Y %H:%M:%S")}\n'
+        f'date picture: {_date_pic}\n'
+        f'md5: {pic_meta.md5_signature}\n'
+        f'camera make: {pic_meta.camera_make}\n'
+        f'camera model: {pic_meta.camera_model}\n'
+        f'location: {lat_lon_str}\n'
+        f'file check: {file_meta.file_checked}'
+    )
+    return text
+
+
+class PictureShow(QWidget):
+
+    def __init__(self, id_list=None):
         super().__init__()
 
-        self.initUI()
+        if id_list:
+            self.id_list = id_list
+            self.initUI()
+            self.index = 0
+            self.cntr_select_pic(self.id_list[self.index])
+
+        else:
+            self.id_list = None
+            self.initUI()
+            self.image = None
+            self.text = None
+            self.index = None
+
+        self.picdb = PictureDb()
 
     def initUI(self):
         vbox = QVBoxLayout()
@@ -50,8 +87,16 @@ class Example(QWidget):
         hbox_pic_text.addWidget(self.text_lbl)
 
         hbox_buttons = QHBoxLayout()
-        quit_button = QPushButton("Quit")
+        quit_button = QPushButton('Quit')
         quit_button.clicked.connect(self.cntr_quit)
+        if self.id_list:
+            prev_button = QPushButton(left_arrow_symbol)
+            prev_button.clicked.connect(self.cntr_prev)
+            next_button = QPushButton(right_arrow_symbol)
+            next_button.clicked.connect(self.cntr_next)
+            save_button = QPushButton('save')
+            save_button.clicked.connect(self.cntr_save)
+
         clockwise_button = QPushButton(clockwise_symbol)
         clockwise_button.clicked.connect(self.rotate_clockwise)
         anticlockwise_button = QPushButton(anticlockwise_symbol)
@@ -60,6 +105,11 @@ class Example(QWidget):
         hbox_buttons.setAlignment(Qt.AlignLeft)
         hbox_buttons.addWidget(clockwise_button)
         hbox_buttons.addWidget(anticlockwise_button)
+        if self.id_list:
+            hbox_buttons.addWidget(prev_button)
+            hbox_buttons.addWidget(next_button)
+            hbox_buttons.addWidget(save_button)
+
         hbox_buttons.addWidget(quit_button)
 
         vbox.addLayout(hbox_pic_text)
@@ -71,21 +121,52 @@ class Example(QWidget):
         self.setWindowTitle('Picture ... ')
         self.show()
 
-        self.image = Image.open('.\\pics\\resize1.jpg')
-        self.show_picture()
-
     def show_picture(self):
         pixmap = pil2pixmap(self.image)
         self.pic_lbl.setPixmap(pixmap)
-        self.text_lbl.setText('Quota est non volare in permiso')
+        self.text_lbl.setText(self.text)
 
     def rotate_clockwise(self):
-        self.image = self.image.rotate(+90)
-        self.show_picture()
+        if self.image:
+            self.image = self.image.rotate(+90, expand=True, resample=Image.BICUBIC)
+            self.show_picture()
 
     def rotate_anticlockwise(self):
-        self.image = self.image.rotate(-90)
-        self.show_picture()
+        if self.image:
+            self.image = self.image.rotate(-90, expand=True, resample=Image.BICUBIC)
+            self.show_picture()
+
+    def cntr_select_pic(self, _id):
+        self.image, pic_meta, file_meta, lat_lon_str = PictureDb(
+            ).load_picture_meta(_id)
+        if pic_meta:
+            self.text = meta_to_text(pic_meta, file_meta, lat_lon_str)
+            self.show_picture()
+
+    def cntr_prev(self):
+        self.index -= 1
+        if self.index < 0:
+            self.index = 0
+
+        self.image, pic_meta, file_meta, lat_lon_str = self.picdb.load_picture_meta(
+            self.id_list[self.index])
+        if pic_meta:
+            self.text = meta_to_text(pic_meta, file_meta, lat_lon_str)
+            self.show_picture()
+
+    def cntr_next(self):
+        self.index += 1
+        if self.index > len(self.id_list) - 1:
+            self.index = len(self.id_list) - 1
+
+        self.image, pic_meta, file_meta, lat_lon_str = self.picdb.load_picture_meta(
+            self.id_list[self.index])
+        if pic_meta:
+            self.text = meta_to_text(pic_meta, file_meta, lat_lon_str)
+            self.show_picture()
+
+    def cntr_save(self):
+        self.picdb.update_thumbnail_image(self.id_list[self.index], self.image)
 
     def cntr_quit(self):
         QApplication.quit()
@@ -93,7 +174,8 @@ class Example(QWidget):
 
 def main():
     app = QApplication([])
-    _ = Example()
+    # _ = PictureShow()
+    _ = PictureShow(id_list=list(range(27000, 27100)))
     sys.exit(app.exec_())
 
 

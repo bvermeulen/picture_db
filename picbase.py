@@ -88,6 +88,6 @@ if __name__ == '__main__':
     # run_remove_duplicates(method='date')  # method='md4' or 'date'
     # run_remove_by_id(99999)
     # run_update_pic_base()
-    run_load_pic_by_id()
+    # run_load_pic_by_id()
     # run_pic_gis()
     # run_replace_picture()
