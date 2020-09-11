@@ -114,11 +114,13 @@ class PictureShow(QWidget):
 
         self.setLayout(vbox)
 
+
         if self.id_list:
             QShortcut(Qt.Key_Left, self, self.cntr_prev)
             QShortcut(Qt.Key_Right, self, self.cntr_next)
-            QShortcut(Qt.Key_Space, self, self.rotate_clockwise)
             QShortcut(Qt.Key_S, self, self.cntr_save)
+
+        QShortcut(Qt.Key_Space, self, self.rotate_clockwise)
 
         self.move(400, 300)
         self.setWindowTitle('Picture ... ')
