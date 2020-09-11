@@ -1,14 +1,3 @@
-#!/usr/bin/python
-
-"""
-ZetCode PyQt5 tutorial
-
-In this example, we display an image
-on the window.
-
-Author: Jan Bodnar
-Website: zetcode.com
-"""
 import sys
 import io
 from PIL import Image
@@ -19,8 +8,8 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPixmap
 from picture_db import PictureDb
 
-clockwise_symbol = '\u21b6'
-anticlockwise_symbol = '\u21b7'
+anticlockwise_symbol = '\u21b6'
+clockwise_symbol = '\u21b7'
 right_arrow_symbol = '\u25B6'
 left_arrow_symbol = '\u25C0'
 
@@ -41,7 +30,7 @@ def meta_to_text(pic_meta, file_meta, lat_lon_str):
         _date_pic = None
 
     text = (
-        f'id: {pic_meta.id:4}\n'
+        f'id: {pic_meta.id:6}\n'
         f'file name: {file_meta.file_name}\n'
         f'file path: {file_meta.file_path}\n'
         f'file modified: {file_meta.file_modified.strftime("%d-%b-%Y %H:%M:%S")}\n'
@@ -50,7 +39,8 @@ def meta_to_text(pic_meta, file_meta, lat_lon_str):
         f'camera make: {pic_meta.camera_make}\n'
         f'camera model: {pic_meta.camera_model}\n'
         f'location: {lat_lon_str}\n'
-        f'file check: {file_meta.file_checked}'
+        f'file check: {file_meta.file_checked}\n'
+        f'rotate: {pic_meta.rotate:3}'
     )
     return text
 
@@ -59,6 +49,9 @@ class PictureShow(QWidget):
 
     def __init__(self, id_list=None):
         super().__init__()
+
+        self.picdb = PictureDb()
+        self.rotate = None
 
         if id_list:
             self.id_list = id_list
@@ -72,8 +65,6 @@ class PictureShow(QWidget):
             self.image = None
             self.text = None
             self.index = None
-
-        self.picdb = PictureDb()
 
     def initUI(self):
         vbox = QVBoxLayout()
@@ -103,8 +94,8 @@ class PictureShow(QWidget):
         anticlockwise_button.clicked.connect(self.rotate_anticlockwise)
         # hbox_buttons.addStretch()
         hbox_buttons.setAlignment(Qt.AlignLeft)
-        hbox_buttons.addWidget(clockwise_button)
         hbox_buttons.addWidget(anticlockwise_button)
+        hbox_buttons.addWidget(clockwise_button)
         if self.id_list:
             hbox_buttons.addWidget(prev_button)
             hbox_buttons.addWidget(next_button)
@@ -124,23 +115,34 @@ class PictureShow(QWidget):
     def show_picture(self):
         pixmap = pil2pixmap(self.image)
         self.pic_lbl.setPixmap(pixmap)
+
+        self.text = meta_to_text(self.pic_meta, self.file_meta, self.lat_lon_str)
         self.text_lbl.setText(self.text)
 
     def rotate_clockwise(self):
+        # note degrees are defined in counter clockwise direction !
         if self.image:
-            self.image = self.image.rotate(+90, expand=True, resample=Image.BICUBIC)
+            self.image = self.image.rotate(-90, expand=True, resample=Image.BICUBIC)
+            self.rotate += 90
+            self.rotate = self.rotate % 360
+            self.pic_meta.rotate = self.rotate
             self.show_picture()
 
     def rotate_anticlockwise(self):
+        # note degrees are defined in counter clockwise direction !
         if self.image:
-            self.image = self.image.rotate(-90, expand=True, resample=Image.BICUBIC)
+            self.image = self.image.rotate(+90, expand=True, resample=Image.BICUBIC)
+            self.rotate -= 90
+            self.rotate = self.rotate % 360
+            self.pic_meta.rotate = self.rotate
             self.show_picture()
 
     def cntr_select_pic(self, _id):
-        self.image, pic_meta, file_meta, lat_lon_str = PictureDb(
-            ).load_picture_meta(_id)
-        if pic_meta:
-            self.text = meta_to_text(pic_meta, file_meta, lat_lon_str)
+        self.image, self.pic_meta, self.file_meta, self.lat_lon_str = (
+            self.picdb.load_picture_meta(_id))
+
+        if self.pic_meta:
+            self.rotate = self.pic_meta.rotate
             self.show_picture()
 
     def cntr_prev(self):
@@ -148,10 +150,10 @@ class PictureShow(QWidget):
         if self.index < 0:
             self.index = 0
 
-        self.image, pic_meta, file_meta, lat_lon_str = self.picdb.load_picture_meta(
-            self.id_list[self.index])
-        if pic_meta:
-            self.text = meta_to_text(pic_meta, file_meta, lat_lon_str)
+        self.image, self.pic_meta, self.file_meta, self.lat_lon_str = (
+            self.picdb.load_picture_meta(self.id_list[self.index]))
+        if self.pic_meta:
+            self.rotate = self.pic_meta.rotate
             self.show_picture()
 
     def cntr_next(self):
@@ -159,14 +161,15 @@ class PictureShow(QWidget):
         if self.index > len(self.id_list) - 1:
             self.index = len(self.id_list) - 1
 
-        self.image, pic_meta, file_meta, lat_lon_str = self.picdb.load_picture_meta(
-            self.id_list[self.index])
-        if pic_meta:
-            self.text = meta_to_text(pic_meta, file_meta, lat_lon_str)
+        self.image, self.pic_meta, self.file_meta, self.lat_lon_str = (
+            self.picdb.load_picture_meta(self.id_list[self.index]))
+        if self.pic_meta:
+            self.rotate = self.pic_meta.rotate
             self.show_picture()
 
     def cntr_save(self):
-        self.picdb.update_thumbnail_image(self.id_list[self.index], self.image)
+        self.picdb.update_thumbnail_image(
+            self.id_list[self.index], self.image, self.rotate)
 
     def cntr_quit(self):
         QApplication.quit()

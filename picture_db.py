@@ -231,7 +231,7 @@ class PictureDb:
     PicturesTable = recordtype('PicturesTable',
                                'id, date_picture, md5_signature, camera_make, '
                                'camera_model, gps_latitude, gps_longitude, '
-                               'gps_altitude, gps_img_direction, thumbnail, exif')
+                               'gps_altitude, gps_img_direction, thumbnail, exif, rotate')
 
     FilesTable = recordtype('FilesTable',
                             'id, picture_id, file_path, file_name, file_modified, '
@@ -243,7 +243,6 @@ class PictureDb:
     LocationsTable = recordtype('LocationsTable',
                                 'id, picture_id, date_picture, '
                                 'latitude, longitude, altitude, geom')
-
 
     @classmethod
     @DbUtils.connect
@@ -270,15 +269,19 @@ class PictureDb:
             gps_altitude='gps_altitude JSON',
             gps_img_direction='gps_img_dir JSON',
             thumbnail='thumbnail JSON',
-            exif='exif JSON')
+            exif='exif JSON',
+            rotate='rotate INTEGER DEFAULT 0',
+        )
 
-        sql_string = (f'CREATE TABLE {cls.table_pictures} '
-                      f'({pics_tbl.id}, {pics_tbl.date_picture}, '
-                      f'{pics_tbl.md5_signature}, {pics_tbl.camera_make}, '
-                      f'{pics_tbl.camera_model}, {pics_tbl.gps_latitude}, '
-                      f'{pics_tbl.gps_longitude}, {pics_tbl.gps_altitude}, '
-                      f'{pics_tbl.gps_img_direction}, {pics_tbl.thumbnail}, '
-                      f'{pics_tbl.exif});')
+        sql_string = (
+            f'CREATE TABLE {cls.table_pictures} '
+            f'({pics_tbl.id}, {pics_tbl.date_picture}, '
+            f'{pics_tbl.md5_signature}, {pics_tbl.camera_make}, '
+            f'{pics_tbl.camera_model}, {pics_tbl.gps_latitude}, '
+            f'{pics_tbl.gps_longitude}, {pics_tbl.gps_altitude}, '
+            f'{pics_tbl.gps_img_direction}, {pics_tbl.thumbnail}, '
+            f'{pics_tbl.exif}, {pics_tbl.rotate});'
+        )
 
         print(f'create table {cls.table_pictures}')
         cursor.execute(sql_string)
@@ -444,15 +447,15 @@ class PictureDb:
         sql_string = (f'INSERT INTO {cls.table_pictures} ('
                       f'date_picture, md5_signature, camera_make, camera_model, '
                       f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                      f'thumbnail, exif) '
-                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                      f'thumbnail, exif, rotate) '
+                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s %s) '
                       f'RETURNING id;')
 
         cursor.execute(sql_string, (
             pic_meta.date_picture, pic_meta.md5_signature, pic_meta.camera_make,
             pic_meta.camera_model, pic_meta.gps_latitude, pic_meta.gps_longitude,
             pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
-            pic_meta.exif))
+            pic_meta.exif, pic_meta.rotate))
 
         picture_id = cursor.fetchone()[0]
 
@@ -477,8 +480,8 @@ class PictureDb:
         sql_pictures = (f'INSERT INTO {cls.table_pictures} ('
                         f'date_picture, md5_signature, camera_make, camera_model, '
                         f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                        f'thumbnail, exif) '
-                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                        f'thumbnail, exif, rotate) '
+                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
                         f'RETURNING id;')
 
         sql_files = (f'INSERT INTO {cls.table_files} ('
@@ -501,14 +504,16 @@ class PictureDb:
                         pic_meta.gps_latitude, pic_meta.gps_longitude,
                         pic_meta.gps_altitude, pic_meta.gps_img_direction,
                         pic_meta.thumbnail,
-                        pic_meta.exif))
+                        pic_meta.exif, 0
+                    ))
 
                     picture_id = cursor.fetchone()[0]
 
                     cursor.execute(sql_files, (
                         picture_id, file_meta.file_path, file_meta.file_name,
                         file_meta.file_modified, file_meta.file_created,
-                        file_meta.file_size, True))
+                        file_meta.file_size, True
+                    ))
 
                     next(progress_message)
 
@@ -528,8 +533,8 @@ class PictureDb:
         sql_pictures = (f'INSERT INTO {cls.table_pictures} ('
                         f'date_picture, md5_signature, camera_make, camera_model, '
                         f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                        f'thumbnail, exif) '
-                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                        f'thumbnail, exif, rotate) '
+                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
                         f'RETURNING id;')
 
         sql_files = (f'INSERT INTO {cls.table_files} ('
@@ -567,7 +572,7 @@ class PictureDb:
                             pic_meta.gps_latitude, pic_meta.gps_longitude,
                             pic_meta.gps_altitude, pic_meta.gps_img_direction,
                             pic_meta.thumbnail,
-                            pic_meta.exif))
+                            pic_meta.exif, 0))
 
                         picture_id = cursor.fetchone()[0]
 
@@ -644,6 +649,7 @@ class PictureDb:
             gps_img_direction=data_from_table_pictures[8],
             thumbnail=data_from_table_pictures[9],
             exif=data_from_table_pictures[10],
+            rotate=data_from_table_pictures[11],
         )
 
         file_meta = cls.FilesTable(
@@ -1008,7 +1014,7 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def update_thumbnail_image(cls, picture_id, image, *args):
+    def update_thumbnail_image(cls, picture_id, image, rotate, *args):
         cursor = DbUtils().get_cursor(args)
 
         img_bytes = io.BytesIO()
@@ -1021,11 +1027,12 @@ class PictureDb:
         sql_str = (
             f'UPDATE {cls.table_pictures} '
             f'SET md5_signature = (%s), '
-            f'thumbnail = (%s) '
+            f'thumbnail = (%s), '
+            f'rotate = (%s) '
             f'WHERE id= (%s) '
         )
 
-        cursor.execute(sql_str, (md5_signature, thumbnail, picture_id))
+        cursor.execute(sql_str, (md5_signature, thumbnail, rotate, picture_id))
 
     @classmethod
     @DbUtils.connect
@@ -1064,5 +1071,5 @@ class PictureDb:
                         f'error found: {e} for file {os.path.join(foldername, filename)}')
                     continue
 
-                cls.update_thumbnail_image(picture_id, im)
+                cls.update_thumbnail_image(picture_id, im, 0)
                 next(progress_message)
