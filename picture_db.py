@@ -28,11 +28,12 @@ elif os.name == 'posix':
     ImageShow.UnixViewer = 'PNG'
     display_process = 'eog'
 
-
 else:
     assert False, f'operating system: {os.name} is not implemented'
 
 EPSG_WGS84 = 4326
+# note: the MD5 signature is based on the thumbnail made with the
+# size below. So changing the size will make check on signature invalid
 DATABASE_PICTURE_SIZE = (600, 600)
 
 
@@ -356,7 +357,7 @@ class PictureDb:
 
     @classmethod
     def get_pic_meta(cls, filename):
-        pic_meta = cls.PicturesTable(*[None]*11)
+        pic_meta = cls.PicturesTable(*[None]*12)
         file_meta = cls.FilesTable(*[None]*8)
 
         # file attributes
@@ -371,7 +372,7 @@ class PictureDb:
         try:
             im = Image.open(filename)
         except OSError:
-            return cls.PicturesTable(*[None]*11), cls.FilesTable(*[None]*8)
+            return cls.PicturesTable(*[None]*12), cls.FilesTable(*[None]*8)
 
         try:
             exif_dict = piexif.load(im.info.get('exif'))
@@ -431,6 +432,7 @@ class PictureDb:
         pic_meta.thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
         pic_meta.md5_signature = hashlib.md5(picture_bytes).hexdigest()
         pic_meta.exif = Exif().exif_to_json(exif_dict)
+        pic_meta.rotate = 0
 
         return pic_meta, file_meta
 
@@ -572,7 +574,7 @@ class PictureDb:
                             pic_meta.gps_latitude, pic_meta.gps_longitude,
                             pic_meta.gps_altitude, pic_meta.gps_img_direction,
                             pic_meta.thumbnail,
-                            pic_meta.exif, 0))
+                            pic_meta.exif, pic_meta.rotate))
 
                         picture_id = cursor.fetchone()[0]
 
@@ -606,14 +608,9 @@ class PictureDb:
         cls.delete_ids(deleted_ids)
 
     @classmethod
-    def update_pictures_base_folder(cls, base_folder):
-        cls.check_and_add_files(base_folder)
-        cls.check_and_remove_non_existing_files()
-
-    @classmethod
     @DbUtils.connect
     def load_picture_meta(cls, _id: int, *args):
-        ''' load picture meta data from the data base
+        ''' load picture meta data from the database
             :arguments:
                 _id: picture id number in database: integer
             :returns:
@@ -1015,6 +1012,11 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def update_thumbnail_image(cls, picture_id, image, rotate, *args):
+        '''  Assumes thumbnail is changed by a rotation. This method replaces
+             the thumbnail and rotation in the database.
+             Note the original md5 signature based on the original thumbnail
+             at rotation 0 remains unchanged.
+        '''
         cursor = DbUtils().get_cursor(args)
 
         img_bytes = io.BytesIO()
@@ -1022,17 +1024,15 @@ class PictureDb:
         picture_bytes = img_bytes.getvalue()
 
         thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
-        md5_signature = hashlib.md5(picture_bytes).hexdigest()
 
         sql_str = (
             f'UPDATE {cls.table_pictures} '
-            f'SET md5_signature = (%s), '
-            f'thumbnail = (%s), '
+            f'SET thumbnail = (%s), '
             f'rotate = (%s) '
             f'WHERE id= (%s) '
         )
 
-        cursor.execute(sql_str, (md5_signature, thumbnail, rotate, picture_id))
+        cursor.execute(sql_str, (thumbnail, rotate, picture_id))
 
     @classmethod
     @DbUtils.connect

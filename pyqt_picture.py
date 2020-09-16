@@ -16,6 +16,9 @@ right_arrow_symbol = '\u25B6'
 left_arrow_symbol = '\u25C0'
 
 def pil2pixmap(pil_image):
+    if pil_image is None:
+        return None
+
     bytes_img = io.BytesIO()
     pil_image.save(bytes_img, format='JPEG')
 
@@ -58,10 +61,19 @@ class PictureShow(QWidget):
         self.picdb = PictureDb()
 
         if id_list:
-            self.id_list = id_list
-            self.initUI()
-            self.index = int(input('What is the start index: '))
-            self.cntr_select_pic(self.id_list[self.index])
+            if len(id_list) == 1 and id_list[0]  == 0:
+                self.id_list = None
+                self.initUI()
+                self.image = None
+                self.text = None
+                self.index = None
+                self.input_pic_by_id()
+
+            else:
+                self.id_list = id_list
+                self.initUI()
+                self.index = int(input('What is the start index: '))
+                self.cntr_select_pic(self.id_list[self.index])
 
         else:
             self.id_list = None
@@ -128,8 +140,10 @@ class PictureShow(QWidget):
 
     def show_picture(self):
         pixmap = pil2pixmap(self.image)
-        self.pic_lbl.setPixmap(pixmap)
+        if not pixmap:
+            return
 
+        self.pic_lbl.setPixmap(pixmap)
         self.text = meta_to_text(
             self.pic_meta, self.file_meta, self.lat_lon_str, index=self.index)
         self.text_lbl.setText(self.text)
@@ -186,21 +200,35 @@ class PictureShow(QWidget):
         self.picdb.update_thumbnail_image(
             self.id_list[self.index], self.image, self.rotate)
 
+    def input_pic_by_id(self):
+        picture_id = int(input('Picture id [0 to exit]: '))
+        if picture_id == 0:
+            self.cntr_quit()
+
+        self.cntr_select_pic(picture_id)
+        self.show_picture()
+        self.input_pic_by_id()
+
     def cntr_quit(self):
         QApplication.quit()
+        exit()
 
 
-def main():
+def main(picture_id=None):
     #pylint: disable='anomalous-backslash-in-string
     '''
-    make a selection in psql:
+    make a selection in psql, for example:
     \o name.json
     select json_build_object('id', json_agg(id)) from pictures
         where gps_latitude ->> 'ref' in ('N', 'S');
     '''
-    json_filename = './id_with_location.json'
-    with open(json_filename) as json_file:
-        id_list = json.load(json_file)
+    if picture_id is not None:
+        id_list = {'id': picture_id}
+
+    else:
+        json_filename = './id_with_location.json'
+        with open(json_filename) as json_file:
+            id_list = json.load(json_file)
 
     app = QApplication([])
     # _ = PictureShow()

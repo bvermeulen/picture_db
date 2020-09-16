@@ -1,5 +1,6 @@
 import datetime
-from picture_db import PictureDb, Exif
+from picture_db import PictureDb
+import pyqt_picture
 
 picdb = PictureDb()
 BASE_FOLDER = 'd:\\pictures'
@@ -19,26 +20,23 @@ def run_create_tables():
     picdb.create_reviews_table()
 
 
-def run_delete_reviews_table():
-    picdb.delete_table('reviews')
-
-
-def run_create_reviews_table():
-    picdb.create_reviews_table()
-
-
 def run_fill_pic_base():
     picdb.store_pictures_base_folder(BASE_FOLDER)
-
-
-def run_load_picture():
-    picdb.load_picture_meta(23250)
 
 
 def run_merge_pictures():
     source_folder = 'd:\\Pics_google'
     destination_folder = 'd:\\Pics_unsorted'
     picdb.select_pics_for_merge(source_folder, destination_folder)
+
+
+def run_update_pic_base():
+    picdb.check_and_add_files(BASE_FOLDER)
+    # picdb.check_and_remove_non_existing_files()
+
+
+def run_show_picture():
+    pyqt_picture.main([0])
 
 
 def run_remove_duplicates(method='md5'):
@@ -57,17 +55,6 @@ def run_remove_by_id(start_id, end_id=None):
         picdb.remove_pics_by_id(deleted_folder, start_id)
 
 
-def run_update_pic_base():
-    picdb.update_pictures_base_folder(BASE_FOLDER)
-
-
-def run_load_pic_by_id():
-    while True:
-        answer = input("Give me a picture id: ")
-        Exif().remove_display()
-        picdb.load_picture_meta(int(answer))
-
-
 def run_pic_gis():
     picdb.delete_table('locations')
     picdb.create_locations_table()
@@ -80,14 +67,12 @@ def run_replace_picture():
 if __name__ == '__main__':
     # run_delete_tables()
     # run_create_tables()
-    # run_fill_pic_base()
-    # run_load_picture()
-    # run_merge_pictures()
-    # run_create_reviews_table()
     # run_delete_reviews_table()
-    # run_remove_duplicates(method='date')  # method='md4' or 'date'
+    # run_fill_pic_base()
     # run_remove_by_id(99999)
-    # run_update_pic_base()
-    # run_load_pic_by_id()
+    # run_remove_duplicates(method='date')  # method='md4' or 'date'
     # run_pic_gis()
     # run_replace_picture()
+    # run_merge_pictures()
+    # run_update_pic_base()
+    run_show_picture()
