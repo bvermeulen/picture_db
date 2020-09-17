@@ -214,8 +214,7 @@ class PictureShow(QWidget):
         self.input_pic_by_id()
 
     def cntr_quit(self):
-        QApplication.exit()
-        sys.exit()
+        self.close()
 
 
 def main(id_list=None):
@@ -236,8 +235,7 @@ def main(id_list=None):
 
     app = QApplication([])
     # _ = PictureShow()
-    picshow = PictureShow(id_list=id_list['id'])
-
+    _ = PictureShow(id_list=id_list['id'])
     sys.exit(app.exec_())
 
 
