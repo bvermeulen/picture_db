@@ -35,18 +35,11 @@ def run_update_pic_base():
     # picdb.check_and_remove_non_existing_files()
 
 
-def run_show_picture():
-    pyqt_picture.main([0])
+def run_show_picture(id_list=None):
+    pyqt_picture.main(id_list=id_list)
 
 
 def run_remove_duplicates(method='md5'):
-    deleted_folder = 'd:\\Pics_deleted'
-    accepted_review_date = datetime.datetime(2019, 10, 1)
-    picdb.remove_duplicate_pics(deleted_folder, method=method,
-                                accepted_review_date=accepted_review_date)
-
-
-def run_remove_by_id(start_id, end_id=None):
     deleted_folder = 'd:\\Pics_deleted'
     if end_id:
         picdb.remove_pics_by_id(deleted_folder, start_id, end_id=end_id)
@@ -75,4 +68,4 @@ if __name__ == '__main__':
     # run_replace_picture()
     # run_merge_pictures()
     # run_update_pic_base()
-    run_show_picture()
+    run_show_picture(id_list=None)

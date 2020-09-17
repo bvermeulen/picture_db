@@ -83,6 +83,7 @@ class PictureShow(QWidget):
             self.index = None
 
         self.rotate = None
+        self.is_exit = False
 
     def initUI(self):
         vbox = QVBoxLayout()
@@ -181,6 +182,7 @@ class PictureShow(QWidget):
 
         self.image, self.pic_meta, self.file_meta, self.lat_lon_str = (
             self.picdb.load_picture_meta(self.id_list[self.index]))
+
         if self.pic_meta:
             self.rotate = self.pic_meta.rotate
             self.show_picture()
@@ -192,9 +194,11 @@ class PictureShow(QWidget):
 
         self.image, self.pic_meta, self.file_meta, self.lat_lon_str = (
             self.picdb.load_picture_meta(self.id_list[self.index]))
+
         if self.pic_meta:
             self.rotate = self.pic_meta.rotate
             self.show_picture()
+
 
     def cntr_save(self):
         self.picdb.update_thumbnail_image(
@@ -210,11 +214,11 @@ class PictureShow(QWidget):
         self.input_pic_by_id()
 
     def cntr_quit(self):
-        QApplication.quit()
-        exit()
+        QApplication.exit()
+        sys.exit()
 
 
-def main(picture_id=None):
+def main(id_list=None):
     #pylint: disable='anomalous-backslash-in-string
     '''
     make a selection in psql, for example:
@@ -222,8 +226,8 @@ def main(picture_id=None):
     select json_build_object('id', json_agg(id)) from pictures
         where gps_latitude ->> 'ref' in ('N', 'S');
     '''
-    if picture_id is not None:
-        id_list = {'id': picture_id}
+    if id_list is not None:
+        id_list = {'id': id_list}
 
     else:
         json_filename = './id_with_location.json'
@@ -232,7 +236,8 @@ def main(picture_id=None):
 
     app = QApplication([])
     # _ = PictureShow()
-    _ = PictureShow(id_list=id_list['id'])
+    picshow = PictureShow(id_list=id_list['id'])
+
     sys.exit(app.exec_())
 
 
