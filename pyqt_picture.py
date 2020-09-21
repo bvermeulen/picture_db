@@ -45,7 +45,8 @@ def meta_to_text(pic_meta, file_meta, lat_lon_str, index=None):
         f'camera model: {pic_meta.camera_model}\n'
         f'location: {lat_lon_str}\n'
         f'file check: {file_meta.file_checked}\n'
-        f'rotate: {pic_meta.rotate:3}'
+        f'rotate: {pic_meta.rotate:3}\n'
+        f'rotate_checked: {pic_meta.rotate_checked}'
     )
 
     if index is not None:
@@ -61,7 +62,7 @@ class PictureShow(QWidget):
         self.picdb = PictureDb()
 
         if id_list:
-            if len(id_list) == 1 and id_list[0]  == 0:
+            if len(id_list) == 1 and id_list[0] == 0:
                 self.id_list = None
                 self.initUI()
                 self.image = None
@@ -126,7 +127,6 @@ class PictureShow(QWidget):
         vbox.addLayout(hbox_buttons)
 
         self.setLayout(vbox)
-
 
         if self.id_list:
             QShortcut(Qt.Key_Left, self, self.cntr_prev)
@@ -199,15 +199,15 @@ class PictureShow(QWidget):
             self.rotate = self.pic_meta.rotate
             self.show_picture()
 
-
     def cntr_save(self):
-        self.picdb.update_thumbnail_image(
+        self.picdb.update_image(
             self.id_list[self.index], self.image, self.rotate)
 
     def input_pic_by_id(self):
         picture_id = int(input('Picture id [0 to exit]: '))
         if picture_id == 0:
             self.cntr_quit()
+            sys.exit()
 
         self.cntr_select_pic(picture_id)
         self.show_picture()
@@ -225,17 +225,14 @@ def main(id_list=None):
     select json_build_object('id', json_agg(id)) from pictures
         where gps_latitude ->> 'ref' in ('N', 'S');
     '''
-    if id_list is not None:
-        id_list = {'id': id_list}
-
-    else:
-        json_filename = './id_with_location.json'
+    if id_list is None:
+        json_filename = './id_with_location_002.json'
         with open(json_filename) as json_file:
             id_list = json.load(json_file)
 
     app = QApplication([])
     # _ = PictureShow()
-    _ = PictureShow(id_list=id_list['id'])
+    _ = PictureShow(id_list=id_list)
     sys.exit(app.exec_())
 
 

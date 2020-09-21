@@ -232,7 +232,8 @@ class PictureDb:
     PicturesTable = recordtype('PicturesTable',
                                'id, date_picture, md5_signature, camera_make, '
                                'camera_model, gps_latitude, gps_longitude, '
-                               'gps_altitude, gps_img_direction, thumbnail, exif, rotate')
+                               'gps_altitude, gps_img_direction, thumbnail, exif, '
+                               'rotate, rotate_checked')
 
     FilesTable = recordtype('FilesTable',
                             'id, picture_id, file_path, file_name, file_modified, '
@@ -272,6 +273,7 @@ class PictureDb:
             thumbnail='thumbnail JSON',
             exif='exif JSON',
             rotate='rotate INTEGER DEFAULT 0',
+            rotate_checked='rotate_checked BOOLEAN DEFAULT FALSE',
         )
 
         sql_string = (
@@ -281,7 +283,7 @@ class PictureDb:
             f'{pics_tbl.camera_model}, {pics_tbl.gps_latitude}, '
             f'{pics_tbl.gps_longitude}, {pics_tbl.gps_altitude}, '
             f'{pics_tbl.gps_img_direction}, {pics_tbl.thumbnail}, '
-            f'{pics_tbl.exif}, {pics_tbl.rotate});'
+            f'{pics_tbl.exif}, {pics_tbl.rotate}, {pics_tbl.rotate_checked});'
         )
 
         print(f'create table {cls.table_pictures}')
@@ -357,7 +359,7 @@ class PictureDb:
 
     @classmethod
     def get_pic_meta(cls, filename):
-        pic_meta = cls.PicturesTable(*[None]*12)
+        pic_meta = cls.PicturesTable(*[None]*13)
         file_meta = cls.FilesTable(*[None]*8)
 
         # file attributes
@@ -372,7 +374,7 @@ class PictureDb:
         try:
             im = Image.open(filename)
         except OSError:
-            return cls.PicturesTable(*[None]*12), cls.FilesTable(*[None]*8)
+            return cls.PicturesTable(*[None]*13), cls.FilesTable(*[None]*8)
 
         try:
             exif_dict = piexif.load(im.info.get('exif'))
@@ -433,6 +435,7 @@ class PictureDb:
         pic_meta.md5_signature = hashlib.md5(picture_bytes).hexdigest()
         pic_meta.exif = Exif().exif_to_json(exif_dict)
         pic_meta.rotate = 0
+        pic_meta.rotate_checked = False
 
         return pic_meta, file_meta
 
@@ -449,15 +452,15 @@ class PictureDb:
         sql_string = (f'INSERT INTO {cls.table_pictures} ('
                       f'date_picture, md5_signature, camera_make, camera_model, '
                       f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                      f'thumbnail, exif, rotate) '
-                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s %s) '
+                      f'thumbnail, exif, rotate, rotate_checked) '
+                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s %s, $s) '
                       f'RETURNING id;')
 
         cursor.execute(sql_string, (
             pic_meta.date_picture, pic_meta.md5_signature, pic_meta.camera_make,
             pic_meta.camera_model, pic_meta.gps_latitude, pic_meta.gps_longitude,
             pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
-            pic_meta.exif, pic_meta.rotate))
+            pic_meta.exif, pic_meta.rotate, pic_meta.rotate_checked))
 
         picture_id = cursor.fetchone()[0]
 
@@ -469,6 +472,12 @@ class PictureDb:
         cursor.execute(sql_string, (
             picture_id, file_meta.file_path, file_meta.file_name, file_meta.file_modified,
             file_meta.file_created, file_meta.file_size, True))
+
+        lat_lon_str, lat_lon_val = Exif().convert_gps(
+            pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude)
+        if lat_lon_str:
+            cls.add_to_locations_table(picture_id, pic_meta.date_picture, lat_lon_val)
+
 
     @classmethod
     @DbUtils.connect
@@ -482,8 +491,8 @@ class PictureDb:
         sql_pictures = (f'INSERT INTO {cls.table_pictures} ('
                         f'date_picture, md5_signature, camera_make, camera_model, '
                         f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                        f'thumbnail, exif, rotate) '
-                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                        f'thumbnail, exif, rotate, rotate_checked) '
+                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
                         f'RETURNING id;')
 
         sql_files = (f'INSERT INTO {cls.table_files} ('
@@ -505,8 +514,8 @@ class PictureDb:
                         pic_meta.camera_make, pic_meta.camera_model,
                         pic_meta.gps_latitude, pic_meta.gps_longitude,
                         pic_meta.gps_altitude, pic_meta.gps_img_direction,
-                        pic_meta.thumbnail,
-                        pic_meta.exif, 0
+                        pic_meta.thumbnail, pic_meta.exif,
+                        pic_meta.rotate, pic_meta.rotate_checked
                     ))
 
                     picture_id = cursor.fetchone()[0]
@@ -516,6 +525,13 @@ class PictureDb:
                         file_meta.file_modified, file_meta.file_created,
                         file_meta.file_size, True
                     ))
+
+                    lat_lon_str, lat_lon_val = Exif().convert_gps(
+                        pic_meta.gps_latitude, pic_meta.gps_longitude,
+                        pic_meta.gps_altitude)
+                    if lat_lon_str:
+                        cls.add_to_locations_table(
+                            picture_id, pic_meta.date_picture, lat_lon_val)
 
                     next(progress_message)
 
@@ -535,8 +551,8 @@ class PictureDb:
         sql_pictures = (f'INSERT INTO {cls.table_pictures} ('
                         f'date_picture, md5_signature, camera_make, camera_model, '
                         f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                        f'thumbnail, exif, rotate) '
-                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
+                        f'thumbnail, exif, rotate, rotate_checked) '
+                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
                         f'RETURNING id;')
 
         sql_files = (f'INSERT INTO {cls.table_files} ('
@@ -573,15 +589,24 @@ class PictureDb:
                             pic_meta.camera_make, pic_meta.camera_model,
                             pic_meta.gps_latitude, pic_meta.gps_longitude,
                             pic_meta.gps_altitude, pic_meta.gps_img_direction,
-                            pic_meta.thumbnail,
-                            pic_meta.exif, pic_meta.rotate))
+                            pic_meta.thumbnail, pic_meta.exif,
+                            pic_meta.rotate, pic_meta.rotate_checked
+                        ))
 
                         picture_id = cursor.fetchone()[0]
 
                         cursor.execute(sql_files, (
                             picture_id, file_meta.file_path, file_meta.file_name,
                             file_meta.file_modified, file_meta.file_created,
-                            file_meta.file_size, True))
+                            file_meta.file_size, True
+                        ))
+
+                        lat_lon_str, lat_lon_val = Exif().convert_gps(
+                            pic_meta.gps_latitude, pic_meta.gps_longitude,
+                            pic_meta.gps_altitude)
+                        if lat_lon_str:
+                            cls.add_to_locations_table(
+                                picture_id, pic_meta.date_picture, lat_lon_val)
 
                     else:
                         sql_string = (f'UPDATE {cls.table_files} '
@@ -647,6 +672,7 @@ class PictureDb:
             thumbnail=data_from_table_pictures[9],
             exif=data_from_table_pictures[10],
             rotate=data_from_table_pictures[11],
+            rotate_checked=data_from_table_pictures[12],
         )
 
         file_meta = cls.FilesTable(
@@ -957,6 +983,58 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
+    def add_to_locations_table(cls, picture_id, date_picture, location, *args):
+        ''' add record to locations map. It first check if picture_id is already
+            in database.
+            :arguments:
+                picture_id: integer
+                data_picture: time stamp or None
+                location: tuple(latitude, longitude, altitude)
+            :return:
+                True: if record is add
+                False: if record already in database
+        '''
+        cursor = DbUtils().get_cursor(args)
+
+        sql_string = (
+            f'select picture_id from {cls.table_locations} '
+            f'where picture_id = {picture_id} '
+        )
+        cursor.execute(sql_string)
+        if cursor.fetchone():
+            return False
+
+        # Point has format (Longitude, Latitude) like (x, y)
+        point = Point(location[1], location[0])
+
+        if date_picture:
+            pass
+
+        else:
+            sql_string_files = (
+                f'select file_modified from {cls.table_files} '
+                f'where picture_id={picture_id} '
+            )
+
+            cursor.execute(sql_string_files)
+            date_picture = cursor.fetchone()
+
+        sql_string_locations = (
+            f'INSERT INTO {cls.table_locations} '
+            f'(picture_id, date_picture, latitude, longitude, altitude, geom) '
+            f'VALUES (%s, %s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) '
+        )
+
+        cursor.execute(
+            sql_string_locations,
+            (picture_id, date_picture,
+             location[0], location[1], location[2],
+             point.wkb_hex, EPSG_WGS84)
+        )
+        return True
+
+    @classmethod
+    @DbUtils.connect
     def populate_locations_table(cls, *args):
 
         cursor = DbUtils().get_cursor(args)
@@ -967,51 +1045,37 @@ class PictureDb:
 
         cursor.execute(sql_string_pictures)
 
-        sql_string_locations = (
-            f'INSERT INTO {cls.table_locations} '
-            f'(picture_id, date_picture, latitude, longitude, altitude, geom) '
-            f'VALUES (%s, %s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) '
-        )
-
         counter = 0
         for i, pic in enumerate(cursor.fetchall()):
 
-            # if there is a gps_latitude
-            if pic[2]:
-                lat_lon_str, lat_lon_val = Exif().convert_gps(pic[2], pic[3], pic[4])
-                if lat_lon_str:
-
-                    # Point has format (Longitude, Latitude) like (x, y)
-                    point = Point(lat_lon_val[1], lat_lon_val[0])
-
-                    if pic[1]:
-                        date_picture = pic[1]
-
-                    else:
-                        sql_string_files = (
-                            f'select file_modified from {cls.table_files} '
-                            f'where picture_id={pic[0]} '
-                        )
-
-                        cursor.execute(sql_string_files)
-                        date_picture = cursor.fetchone()
-
-                    cursor.execute(
-                        sql_string_locations,
-                        (pic[0], date_picture,
-                         lat_lon_val[0], lat_lon_val[1], lat_lon_val[2],
-                         point.wkb_hex, EPSG_WGS84)
-                    )
-
+            lat_lon_str, lat_lon_val = Exif().convert_gps(pic[2], pic[3], pic[4])
+            if lat_lon_str:
+                if cls.add_to_locations_table(pic[0], pic[1], lat_lon_val):
                     counter += 1
                     print(
                         f'{i:5}: {counter:4} pic id: {pic[0]}, '
-                        f'date: {date_picture}, {lat_lon_str}'
+                        f'date: {pic[1]}, {lat_lon_str}'
                     )
 
     @classmethod
     @DbUtils.connect
-    def update_thumbnail_image(cls, picture_id, image, rotate, *args):
+    def update_rotate_checked(cls, json_filename, *args):
+        cursor = DbUtils().get_cursor(args)
+
+        with open(json_filename) as json_file:
+            picture_ids = json.load(json_file)
+
+        for picture_id in picture_ids:
+            sql_string = (
+                f'update {cls.table_pictures} '
+                f'set rotate_checked = True '
+                f'where id = {picture_id}'
+            )
+            cursor.execute(sql_string)
+
+    @classmethod
+    @DbUtils.connect
+    def update_image(cls, picture_id, image, rotate, *args):
         '''  Assumes thumbnail is changed by a rotation. This method replaces
              the thumbnail and rotation in the database.
              Note the original md5 signature based on the original thumbnail
@@ -1040,7 +1104,7 @@ class PictureDb:
         cursor = DbUtils().get_cursor(args)
 
         progress_message = progress_message_generator(
-            f'update picture and md5 for {base_folder}')
+            f'update picture for {base_folder}')
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
@@ -1071,5 +1135,71 @@ class PictureDb:
                         f'error found: {e} for file {os.path.join(foldername, filename)}')
                     continue
 
-                cls.update_thumbnail_image(picture_id, im, 0)
+                cls.update_image(picture_id, im, 0)
                 next(progress_message)
+
+    @classmethod
+    @DbUtils.connect
+    def update_image_md5(cls, picture_id, image, rotate, *args):
+        '''  This method replaces the thumbnail and md5.
+        '''
+        cursor = DbUtils().get_cursor(args)
+
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format='JPEG')
+        picture_bytes = img_bytes.getvalue()
+
+        thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
+        md5_signature = hashlib.md5(picture_bytes).hexdigest()
+
+        sql_str = (
+            f'UPDATE {cls.table_pictures} '
+            f'SET thumbnail = (%s), '
+            f'md5_signature = (%s), '
+            f'rotate = (%s) '
+            f'WHERE id= (%s) '
+        )
+
+        cursor.execute(sql_str, (thumbnail, md5_signature, rotate, picture_id))
+
+    @classmethod
+    @DbUtils.connect
+    def replace_thumbnail_md5(cls, id_list, *args):
+        ''' patch to put back missing files of pictures that were already in the database
+            but with different size thumbnail and md5
+        '''
+        cursor = DbUtils().get_cursor(args)
+
+        progress_message = progress_message_generator(
+            f'update picture and md5 for {id_list[0]} ... {id_list[-1]}')
+
+        for picture_id in id_list:
+
+            sql_str = (f'SELECT file_path, file_name FROM {cls.table_files} '
+                       f'WHERE picture_id = {picture_id} ')
+
+            cursor.execute(sql_str)
+            result = cursor.fetchone()
+
+            try:
+                filename_abs = os.path.join(
+                    result[0], result[1])
+
+            except TypeError:
+                logger.info(
+                    f'file for {picture_id} not found in database'
+                )
+                continue
+
+            try:
+                im = Image.open(filename_abs)
+                im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
+
+            except Exception as e:  #pylint: disable=broad-except
+                logger.info(
+                    f'error found: {e} for file {filename_abs}'
+                )
+                continue
+
+            cls.update_image_md5(picture_id, im, 0)
+            next(progress_message)

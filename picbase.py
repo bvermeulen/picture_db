@@ -1,4 +1,3 @@
-import datetime
 from picture_db import PictureDb
 import pyqt_picture
 
@@ -39,7 +38,7 @@ def run_show_picture(id_list=None):
     pyqt_picture.main(id_list=id_list)
 
 
-def run_remove_duplicates(method='md5'):
+def run_remove_duplicates(method='md5', start_id=None, end_id=None):
     deleted_folder = 'd:\\Pics_deleted'
     if end_id:
         picdb.remove_pics_by_id(deleted_folder, start_id, end_id=end_id)
@@ -49,23 +48,38 @@ def run_remove_duplicates(method='md5'):
 
 
 def run_pic_gis():
-    picdb.delete_table('locations')
-    picdb.create_locations_table()
     picdb.populate_locations_table()
+
+
+def run_update_rotate_checked():
+    json_file = 'id_with_location_002.json'
+    picdb.update_rotate_checked(json_file)
 
 
 def run_replace_picture():
     picdb.replace_thumbnail(BASE_FOLDER)
+
+
+def run_replace_picture_md5():
+    id_list = [
+        26414, 6855, 6865, 6869, 6874, 6882, 6883, 6922, 6926,
+        6933, 6952, 6954, 6958, 6960, 6968, 7012, 7020, 7027, 7038,
+        7061, 7065, 7077, 7083, 7091, 7103, 7111, 7116, 7145, 7593,
+        7594, 20878, 21181, 21211, 21250, 21358, 21419, 21429, 21653,
+        21700, 21755, 21789, 21810
+    ]
+    picdb.replace_thumbnail_md5(id_list)
+
 
 if __name__ == '__main__':
     # run_delete_tables()
     # run_create_tables()
     # run_delete_reviews_table()
     # run_fill_pic_base()
-    # run_remove_by_id(99999)
     # run_remove_duplicates(method='date')  # method='md4' or 'date'
     # run_pic_gis()
     # run_replace_picture()
     # run_merge_pictures()
     # run_update_pic_base()
-    run_show_picture(id_list=None)
+    # run_update_rotate_checked()
+    run_show_picture(id_list=[0])
