@@ -1,5 +1,6 @@
 import sys
 import io
+from PIL import Image
 from enum import Enum
 import json
 from PyQt5.QtWidgets import (
@@ -158,9 +159,9 @@ class PictureShow(QWidget):
             self.pic_meta.rotate = self.rotate
             self.show_picture()
 
-    def cntr_select_pic(self, _id):
+    def cntr_select_pic(self, picture_id):
         self.image, self.pic_meta, self.file_meta, self.lat_lon_str = (
-            self.picdb.load_picture_meta(_id))
+            self.picdb.load_picture_meta(picture_id))
 
         if self.pic_meta:
             self.rotate = self.pic_meta.rotate
