@@ -214,7 +214,7 @@ class PictureShow(QWidget):
         self.close()
 
 
-def main():
+def main(mode=Mode.Single):
     #pylint: disable='anomalous-backslash-in-string
     '''
     make a selection in psql, for example:
@@ -223,7 +223,6 @@ def main():
         where gps_latitude ->> 'ref' in ('N', 'S');
     '''
     app = QApplication([])
-    mode = Mode.Multi
 
     if mode == Mode.Multi :
         json_filename = './id_with_location_001.json'
@@ -245,4 +244,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main(mode=Mode.Multi)
