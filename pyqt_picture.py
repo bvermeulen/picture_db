@@ -1,8 +1,8 @@
 import sys
 import io
-from PIL import Image
 from enum import Enum
 import json
+from PIL import Image
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QApplication, QPushButton,
     QShortcut
@@ -214,7 +214,7 @@ class PictureShow(QWidget):
         self.close()
 
 
-def main(mode=Mode.Single):
+def main(mode=Mode.Single, filename=None, pic_ids=None):
     #pylint: disable='anomalous-backslash-in-string
     '''
     make a selection in psql, for example:
@@ -224,10 +224,17 @@ def main(mode=Mode.Single):
     '''
     app = QApplication([])
 
-    if mode == Mode.Multi :
-        json_filename = './id_with_location_001.json'
-        with open(json_filename) as json_file:
-            id_list = json.load(json_file)
+    if mode == Mode.Multi:
+        if filename:
+            with open(filename) as json_file:
+                id_list = json.load(json_file)
+
+        elif pic_ids:
+            id_list = pic_ids
+
+        else:
+            print('either give json file or list of picture ids')
+            sys.exit()
 
         pic_show = PictureShow(mode=mode)
         pic_show.call_by_list(id_list)
@@ -244,4 +251,4 @@ def main(mode=Mode.Single):
 
 
 if __name__ == '__main__':
-    main(mode=Mode.Multi)
+    main(mode=Mode.Multi, filename='./id_with_location_002.json')  #, pic_ids=list(range(8500, 9000)))
