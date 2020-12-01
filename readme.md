@@ -3,7 +3,7 @@
 ## Upload pictures in the database
 To use the picture database in sync with Google Photo, do not place pictures directly in the folders under the base folder
 in this case "Pictures". Instead let Google Photo update the pictures from any device, including from the location
-"Pics_to_google", which is the location if you have pictures on the desktop to send for google to upload.
+"Pics_to_google", which is the location if you have pictures on the desktop for google to upload.
 
 To update the database, periodically select pictures from "Google Photos" from the previous date you have done this to a recent date
 and download the pictures in a zipfile. Extract the pictures in this zipfile to the folder "Pics_google".
