@@ -1040,7 +1040,7 @@ class PictureDb:
         cursor = DbUtils().get_cursor(args)
         sql_string_pictures = (
             f'select id, date_picture, gps_latitude, gps_longitude, gps_altitude '
-            f'from {cls.table_pictures} where rotate_checked'
+            f'from {cls.table_pictures} where not rotate_checked'
         )
 
         cursor.execute(sql_string_pictures)

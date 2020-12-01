@@ -30,7 +30,7 @@ def run_merge_pictures():
     picdb.select_pics_for_merge(source_folder, destination_folder)
 
 
-def run_update_pic_base():
+def run_update_picbase():
     picdb.check_and_add_files(BASE_FOLDER)
     # WARNING: below method should be run carefully. Check the database
     # which pictures will be deleted by runnning sql:
@@ -90,6 +90,6 @@ if __name__ == '__main__':
     run_pic_gis()
     # run_replace_picture()
     # run_merge_pictures()
-    # run_update_pic_base()
+    # run_update_picbase()
     # run_update_rotate_checked()
     # run_show_picture()
