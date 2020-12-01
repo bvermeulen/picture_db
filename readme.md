@@ -1,4 +1,4 @@
-* Picture db *
+*Picture db*
 
 - Upload pictures in the database
 To use the picture database in sync with Google Photo, do not place pictures directly in the folders under the base folder
