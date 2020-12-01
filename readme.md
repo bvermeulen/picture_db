@@ -22,7 +22,7 @@ that are not yet in the database.
 ## Sync picture database with "Pictures"
 It may be you have removed or moved pictures under "Pictures". In this case the picture is no longer at that location on disk, but
 still in the database under that location and possibly in another location as well. To sync the database with "Pictures" you can
-remove these pictures using the method "check_and_remove_non_existing_files(). Before doing so you better check what files will be
+remove these pictures using the method `check_and_remove_non_existing_files()`. Before doing so you better check what files will be
 removed from the database by running sql:
 
     >>>select picture_id, file_path, file_name from files where not file_checked;
