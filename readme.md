@@ -51,7 +51,7 @@ and is not yet in this table will be added
 ## Check rotation of pictures and set rotate_checked flag
 Run an sql to get a json list with id's for pictures that have a location but rotate_checked flag has not yet been set.
 
-    >>>select json_agg(id) from pictures where gps_latitude ->> 'ref' in ('N', 'S') and rotate_checked=false \t \pset format unaligned \g ids.json;
+    >>>select json_agg(id) from pictures where gps_latitude ->> 'ref' in ('N', 'S') and not rotate_checked \t \pset format unaligned \g ids.json;
 
 In the program pyqt_picture.py change the filename keyword argument to the filename that was output of the line above in the call to
 main - main(mode=Mode.Multi, filename='./ids.json')
