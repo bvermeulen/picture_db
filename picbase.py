@@ -1,5 +1,6 @@
 from picture_db import PictureDb
 import pyqt_picture
+from pyqt_picture import Mode
 
 picdb = PictureDb()
 BASE_FOLDER = 'd:\\pictures'
@@ -38,7 +39,7 @@ def run_update_pic_base():
 
 
 def run_show_picture():
-    pyqt_picture.main()
+    pyqt_picture.main(mode=Mode.Multi, pic_ids=list(range(1000, 2000)))
 
 
 def run_remove_pics(method='md5', start_id=None, end_id=None):
@@ -74,7 +75,7 @@ def run_replace_picture_md5():
         26414, 6855, 6865, 6869, 6874, 6882, 6883, 6922, 6926,
         6933, 6952, 6954, 6958, 6960, 6968, 7012, 7020, 7027, 7038,
         7061, 7065, 7077, 7083, 7091, 7103, 7111, 7116, 7145, 7593,
-        7594, 20878, 21181, 21211, 21250, 21358, 21419, 21429, 21653,
+        7594, 20878, 21181, 21211, 21250,  21358, 21419, 21429, 21653,
         21700, 21755, 21789, 21810
     ]
     picdb.replace_thumbnail_md5(id_list)
