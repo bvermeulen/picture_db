@@ -24,8 +24,11 @@ It may be you have removed or moved pictures under "Pictures". In this case the 
 still in the database under that location and possibly in another location as well. To sync the database with "Pictures" you can
 remove these pictures using the method "check_and_remove_non_existing_files(). Before doing so you better check what files will be
 removed from the database by running sql:
+
     >>>select picture_id, file_path, file_name from files where not file_checked;
+
 If you are ok, you can run the method in a python shell: 
+
     >>>from picture_db import PictureDb
     >>>PictureDb().check_and_remove_non_existing_files()
 
@@ -47,7 +50,9 @@ and is not yet in this table will be added
 
 ## Check rotation of pictures and set rotate_checked flag
 Run an sql to get a json list with id's for pictures that have a location but rotate_checked flag has not yet been set.
+
     >>>select json_agg(id) from pictures where gps_latitude ->> 'ref' in ('N', 'S') and rotate_checked=false \t \pset format unaligned \g ids.json;
+
 In the program pyqt_picture.py change the filename keyword argument to the filename that was output of the line above in the call to
 main - main(mode=Mode.Multi, filename='./ids.json')
 
