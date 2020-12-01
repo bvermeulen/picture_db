@@ -31,19 +31,29 @@ def run_merge_pictures():
 
 def run_update_pic_base():
     picdb.check_and_add_files(BASE_FOLDER)
-    # picdb.check_and_remove_non_existing_files()
+    # WARNING: below method should be run carefully. Check the database
+    # which pictures will be deleted by runnning sql:
+    # select picture_id, file_path, file_name from files where not file_checked;
+    #picdb.check_and_remove_non_existing_files()
 
 
 def run_show_picture():
     pyqt_picture.main()
 
-def run_remove_duplicates(method='md5', start_id=None, end_id=None):
+
+def run_remove_pics(method='md5', start_id=None, end_id=None):
+    ''' removed pics by id if either start_id or end_id are give otherwise
+        runs delete picture on check on method
+    '''
     deleted_folder = 'd:\\Pics_deleted'
     if end_id:
         picdb.remove_pics_by_id(deleted_folder, start_id, end_id=end_id)
 
-    else:
+    elif start_id:
         picdb.remove_pics_by_id(deleted_folder, start_id)
+
+    else:
+        picdb.remove_duplicate_pics(deleted_folder, method=method)
 
 
 def run_pic_gis():
@@ -51,7 +61,7 @@ def run_pic_gis():
 
 
 def run_update_rotate_checked():
-    json_file = 'id_with_location_002.json'
+    json_file = 'id_with_location_003.json'
     picdb.update_rotate_checked(json_file)
 
 
@@ -75,10 +85,10 @@ if __name__ == '__main__':
     # run_create_tables()
     # run_delete_reviews_table()
     # run_fill_pic_base()
-    # run_remove_duplicates(method='date')  # method='md4' or 'date'
-    # run_pic_gis()
+    # run_remove_pics(method='md5')  # method='md4' or 'date'
+    run_pic_gis()
     # run_replace_picture()
     # run_merge_pictures()
     # run_update_pic_base()
     # run_update_rotate_checked()
-    run_show_picture()
+    # run_show_picture()

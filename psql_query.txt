@@ -1,0 +1,11 @@
+select json_agg(id) from pictures where gps_latitude ->> 'ref' in ('N', 'S') and rotate_checked=false \t \pset format unaligned \g ids.json
+
+\t on,  Tuples Only on
+\pset format unaligned,  The spacing between the results can be removed by switch PSQL's formatting to unaligned.
+\g file, output file in current directory
+
+# read a json file
+import json
+with open('ids.json') as jf:
+  ml = json.load(jf)
+
