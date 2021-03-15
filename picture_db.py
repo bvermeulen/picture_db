@@ -174,15 +174,6 @@ class DbUtils:
         return wrapper
 
     @staticmethod
-    def get_cursor(cursor):
-        if cursor:
-            return cursor[0]
-
-        else:
-            print('unable to connect to database')
-            raise()
-
-    @staticmethod
     def get_answer(choices):
         ''' arguments:
             choices: list of picture numbers to be able to delete
@@ -248,18 +239,14 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def delete_table(cls, table_name: str, *args):
-        cursor = DbUtils().get_cursor(args)
-
+    def delete_table(cls, table_name: str, cursor):
         sql_string = f'DROP TABLE {table_name};'
         cursor.execute(sql_string)
         print(f'delete table {table_name}')
 
     @classmethod
     @DbUtils.connect
-    def create_pictures_table(cls, *args):
-        cursor = DbUtils().get_cursor(args)
-
+    def create_pictures_table(cls, cursor):
         pics_tbl = cls.PicturesTable(
             id='id SERIAL PRIMARY KEY',
             date_picture='date_picture TIMESTAMP',
@@ -275,7 +262,6 @@ class PictureDb:
             rotate='rotate INTEGER DEFAULT 0',
             rotate_checked='rotate_checked BOOLEAN DEFAULT FALSE',
         )
-
         sql_string = (
             f'CREATE TABLE {cls.table_pictures} '
             f'({pics_tbl.id}, {pics_tbl.date_picture}, '
@@ -285,15 +271,12 @@ class PictureDb:
             f'{pics_tbl.gps_img_direction}, {pics_tbl.thumbnail}, '
             f'{pics_tbl.exif}, {pics_tbl.rotate}, {pics_tbl.rotate_checked});'
         )
-
         print(f'create table {cls.table_pictures}')
         cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
-    def create_files_table(cls, *args):
-        cursor = DbUtils().get_cursor(args)
-
+    def create_files_table(cls, cursor):
         files_tbl = cls.FilesTable(
             id='id SERIAL PRIMARY KEY',
             picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
@@ -303,8 +286,8 @@ class PictureDb:
             file_modified='file_modified TIMESTAMP',
             file_created='file_created TIMESTAMP',
             file_size='file_size INTEGER',
-            file_checked='file_checked BOOLEAN')
-
+            file_checked='file_checked BOOLEAN'
+        )
         sql_string = (f'CREATE TABLE {cls.table_files} '
                       f'({files_tbl.id}, {files_tbl.picture_id}, '
                       f'{files_tbl.file_path}, {files_tbl.file_name}, '
@@ -316,16 +299,14 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def create_reviews_table(cls, *args):
-        cursor = DbUtils().get_cursor(args)
-
+    def create_reviews_table(cls, cursor):
         reviews_tbl = cls.ReviewTable(
             id='id SERIAL PRIMARY KEY',
             picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
                         f'ON DELETE CASCADE NOT NULL'),
             reviewer_name='reviewer_name VARCHAR(20)',
-            review_date='review_date TIMESTAMP')
-
+            review_date='review_date TIMESTAMP'
+        )
         sql_string = (f'CREATE TABLE {cls.table_reviews} '
                       f'({reviews_tbl.id}, {reviews_tbl.picture_id}, '
                       f'{reviews_tbl.reviewer_name}, {reviews_tbl.review_date});')
@@ -335,8 +316,7 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def create_locations_table(cls, *args):
-        cursor = DbUtils().get_cursor(args)
+    def create_locations_table(cls, cursor):
         locs_tbl = cls.LocationsTable(
             id='id SERIAL PRIMARY KEY',
             picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
@@ -441,12 +421,11 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def store_picture_meta(cls, filename, *args):
+    def store_picture_meta(cls, filename, cursor):
         pic_meta, file_meta = cls.get_pic_meta(filename)
         if not file_meta.file_name:
             return
 
-        cursor = DbUtils().get_cursor(args)
         print(f'store meta data for {filename}')
 
         sql_string = (f'INSERT INTO {cls.table_pictures} ('
@@ -460,8 +439,8 @@ class PictureDb:
             pic_meta.date_picture, pic_meta.md5_signature, pic_meta.camera_make,
             pic_meta.camera_model, pic_meta.gps_latitude, pic_meta.gps_longitude,
             pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
-            pic_meta.exif, pic_meta.rotate, pic_meta.rotate_checked))
-
+            pic_meta.exif, pic_meta.rotate, pic_meta.rotate_checked)
+        )
         picture_id = cursor.fetchone()[0]
 
         sql_string = (f'INSERT INTO {cls.table_files} ('
@@ -471,20 +450,18 @@ class PictureDb:
 
         cursor.execute(sql_string, (
             picture_id, file_meta.file_path, file_meta.file_name, file_meta.file_modified,
-            file_meta.file_created, file_meta.file_size, True))
-
+            file_meta.file_created, file_meta.file_size, True)
+        )
         lat_lon_str, lat_lon_val = Exif().convert_gps(
             pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude)
         if lat_lon_str:
             cls.add_to_locations_table(picture_id, pic_meta.date_picture, lat_lon_val)
 
-
     @classmethod
     @DbUtils.connect
-    def store_pictures_base_folder(cls, base_folder, *args):
+    def store_pictures_base_folder(cls, base_folder, cursor):
         ''' re-initialises the database all previous data will be lost
         '''
-        cursor = DbUtils().get_cursor(args)
         progress_message = progress_message_generator(
             f'loading picture meta data from {base_folder}')
 
@@ -517,7 +494,6 @@ class PictureDb:
                         pic_meta.thumbnail, pic_meta.exif,
                         pic_meta.rotate, pic_meta.rotate_checked
                     ))
-
                     picture_id = cursor.fetchone()[0]
 
                     cursor.execute(sql_files, (
@@ -525,10 +501,10 @@ class PictureDb:
                         file_meta.file_modified, file_meta.file_created,
                         file_meta.file_size, True
                     ))
-
                     lat_lon_str, lat_lon_val = Exif().convert_gps(
                         pic_meta.gps_latitude, pic_meta.gps_longitude,
-                        pic_meta.gps_altitude)
+                        pic_meta.gps_altitude
+                    )
                     if lat_lon_str:
                         cls.add_to_locations_table(
                             picture_id, pic_meta.date_picture, lat_lon_val)
@@ -539,10 +515,9 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def check_and_add_files(cls, base_folder, *args):
+    def check_and_add_files(cls, base_folder, cursor):
         ''' check if files are in database, if they are not then add
         '''
-        cursor = DbUtils().get_cursor(args)
         progress_message = progress_message_generator(
             f'update picture meta data from {base_folder}')
         sql_string = (f'UPDATE {cls.table_files} SET file_checked = FALSE;')
@@ -620,12 +595,10 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def check_and_remove_non_existing_files(cls, *args):
+    def check_and_remove_non_existing_files(cls, cursor):
         ''' check if files are in the database, but not on file, in that case remove
             from the database
         '''
-        cursor = DbUtils().get_cursor(args)
-
         sql_string = (
             f'SELECT picture_id FROM {cls.table_files} WHERE NOT file_checked;')
         cursor.execute(sql_string)
@@ -634,7 +607,7 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def load_picture_meta(cls, _id: int, *args):
+    def load_picture_meta(cls, _id: int, cursor):
         ''' load picture meta data from the database
             :arguments:
                 _id: picture id number in database: integer
@@ -644,8 +617,6 @@ class PictureDb:
                 file_meta: recordtype FilesTable
                 lat_lon_str: string
         '''
-        cursor = DbUtils().get_cursor(args)
-
         sql_string = f'SELECT * FROM {cls.table_pictures} WHERE id={_id};'
         cursor.execute(sql_string)
         data_from_table_pictures = cursor.fetchone()
@@ -701,11 +672,10 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def select_pics_for_merge(cls, source_folder, destination_folder, *args):
+    def select_pics_for_merge(cls, source_folder, destination_folder, cursor):
         '''  method that checks if picture if in the database. If it is
              not moves picture from source folder to the destination folder
         '''
-        cursor = DbUtils().get_cursor(args)
         progress_message = progress_message_generator(
             f'merging pictures from {source_folder}')
 
@@ -766,11 +736,7 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def review_required(cls, accepted_review_date, picture_id, *args):
-
-        utils = DbUtils()
-        cursor = utils.get_cursor(args)
-
+    def review_required(cls, accepted_review_date, picture_id, cursor):
         sql_string = (f'SELECT review_date FROM {cls.table_reviews} '
                       f'WHERE picture_id={picture_id};')
         cursor.execute(sql_string)
@@ -786,18 +752,15 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def delete_ids(cls, deleted_ids, *args):
+    def delete_ids(cls, deleted_ids, cursor):
         if deleted_ids:
-            cursor = DbUtils().get_cursor(args)
             sql_string = (f'DELETE FROM {cls.table_pictures} '
                           f'WHERE id=any(array{deleted_ids});')
             cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
-    def update_reviews(cls, pic_selection, reviewer_name, *args):
-        cursor = DbUtils().get_cursor(args)
-
+    def update_reviews(cls, pic_selection, reviewer_name, cursor):
         for pic in pic_selection:
             sql_string = (f'INSERT INTO {cls.table_reviews} ('
                           f'picture_id, reviewer_name, review_date) '
@@ -808,7 +771,7 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def remove_duplicate_pics(cls, deleted_folder, *args, method='md5',
+    def remove_duplicate_pics(cls, deleted_folder, cursor, method='md5',
                               accepted_review_date=datetime.datetime(1900, 1, 1)):
         '''  sort out duplicate pictures by either using the md5_signature or picture
              date.
@@ -831,7 +794,6 @@ class PictureDb:
             c_time = datetime.datetime.now()
             f.write(f'===> Remove duplicates with method \'{method}\': {c_time}\n')
 
-        cursor = utils.get_cursor(args)
         sql_string = (f'SELECT {method} FROM {cls.table_pictures} WHERE {method} IN '
                       f'(SELECT {method} FROM {cls.table_pictures} GROUP BY {method} '
                       f'HAVING count(*) > 1) ORDER BY id;')
@@ -926,7 +888,7 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def remove_pics_by_id(cls, deleted_folder, start_id, *args, end_id=None):
+    def remove_pics_by_id(cls, deleted_folder, start_id, cursor, end_id=None):
         '''  remove pictures that are in dabase with id between start_id and end_id
              patch needed as google photo may merge duplicate photos
         '''
@@ -941,8 +903,6 @@ class PictureDb:
                 f.write(f'===> Remove pictured by id from '
                         f'{start_id} until last: {c_time}\n')
 
-        utils = DbUtils()
-        cursor = utils.get_cursor(args)
         if end_id:
             sql_string = (f'select id, file_path, file_name from {cls.table_files} '
                           f'where id between {start_id} and {end_id}')
@@ -983,7 +943,7 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def add_to_locations_table(cls, picture_id, date_picture, location, *args):
+    def add_to_locations_table(cls, picture_id, date_picture, location, cursor):
         ''' add record to locations map. It first check if picture_id is already
             in database.
             :arguments:
@@ -994,8 +954,6 @@ class PictureDb:
                 True: if record is add
                 False: if record already in database
         '''
-        cursor = DbUtils().get_cursor(args)
-
         sql_string = (
             f'select picture_id from {cls.table_locations} '
             f'where picture_id = {picture_id} '
@@ -1035,14 +993,11 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def populate_locations_table(cls, *args):
-
-        cursor = DbUtils().get_cursor(args)
+    def populate_locations_table(cls, cursor):
         sql_string_pictures = (
             f'select id, date_picture, gps_latitude, gps_longitude, gps_altitude '
             f'from {cls.table_pictures} where not rotate_checked'
         )
-
         cursor.execute(sql_string_pictures)
 
         counter = 0
@@ -1059,9 +1014,7 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def update_rotate_checked(cls, json_filename, *args):
-        cursor = DbUtils().get_cursor(args)
-
+    def update_rotate_checked(cls, json_filename, cursor):
         with open(json_filename) as json_file:
             picture_ids = json.load(json_file)
 
@@ -1075,14 +1028,12 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def update_image(cls, picture_id, image, rotate, *args):
+    def update_image(cls, picture_id, image, rotate, cursor):
         '''  Assumes thumbnail is changed by a rotation. This method replaces
              the thumbnail and rotation in the database.
              Note the original md5 signature based on the original thumbnail
              at rotation 0 remains unchanged.
         '''
-        cursor = DbUtils().get_cursor(args)
-
         img_bytes = io.BytesIO()
         image.save(img_bytes, format='JPEG')
         picture_bytes = img_bytes.getvalue()
@@ -1095,14 +1046,11 @@ class PictureDb:
             f'rotate = (%s) '
             f'WHERE id= (%s) '
         )
-
         cursor.execute(sql_str, (thumbnail, rotate, picture_id))
 
     @classmethod
     @DbUtils.connect
-    def replace_thumbnail(cls, base_folder, *args):
-        cursor = DbUtils().get_cursor(args)
-
+    def replace_thumbnail(cls, base_folder, cursor):
         progress_message = progress_message_generator(
             f'update picture for {base_folder}')
 
@@ -1140,11 +1088,9 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def update_image_md5(cls, picture_id, image, rotate, *args):
+    def update_image_md5(cls, picture_id, image, rotate, cursor):
         '''  This method replaces the thumbnail and md5.
         '''
-        cursor = DbUtils().get_cursor(args)
-
         img_bytes = io.BytesIO()
         image.save(img_bytes, format='JPEG')
         picture_bytes = img_bytes.getvalue()
@@ -1159,17 +1105,14 @@ class PictureDb:
             f'rotate = (%s) '
             f'WHERE id= (%s) '
         )
-
         cursor.execute(sql_str, (thumbnail, md5_signature, rotate, picture_id))
 
     @classmethod
     @DbUtils.connect
-    def replace_thumbnail_md5(cls, id_list, *args):
+    def replace_thumbnail_md5(cls, id_list, cursor):
         ''' patch to put back missing files of pictures that were already in the database
             but with different size thumbnail and md5
         '''
-        cursor = DbUtils().get_cursor(args)
-
         progress_message = progress_message_generator(
             f'update picture and md5 for {id_list[0]} ... {id_list[-1]}')
 
