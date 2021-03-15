@@ -944,7 +944,7 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def add_to_locations_table(cls, picture_id, date_picture, location, cursor):
-        ''' add record to locations map. It first check if picture_id is already
+        ''' add record to locations map. It first checks if picture_id is already
             in database.
             :arguments:
                 picture_id: integer
@@ -993,11 +993,19 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def populate_locations_table(cls, cursor):
-        sql_string_pictures = (
-            f'select id, date_picture, gps_latitude, gps_longitude, gps_altitude '
-            f'from {cls.table_pictures} where not rotate_checked'
-        )
+    def populate_locations_table(cls, cursor, json_filename=None):
+        if json_filename is None:
+            sql_string_pictures = (
+                f'select id, date_picture, gps_latitude, gps_longitude, gps_altitude '
+                f'from {cls.table_pictures} where not rotate_checked'
+            )
+        else:
+            with open(json_filename) as json_file:
+                picture_ids = tuple(json.load(json_file))
+            sql_string_pictures = (
+                f'select id, date_picture, gps_latitude, gps_longitude, gps_altitude '
+                f'from {cls.table_pictures} where id in {picture_ids}'
+            )
         cursor.execute(sql_string_pictures)
 
         counter = 0

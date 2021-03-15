@@ -57,12 +57,12 @@ def run_remove_pics(method='md5', start_id=None, end_id=None):
         picdb.remove_duplicate_pics(deleted_folder, method=method)
 
 
-def run_pic_gis():
-    picdb.populate_locations_table()
+def run_pic_gis(json_file):
+    picdb.populate_locations_table(json_filename=json_file)
 
 
 def run_update_rotate_checked():
-    json_file = 'id_with_location_003.json'
+    json_file = 'id_with_location_004.json'
     picdb.update_rotate_checked(json_file)
 
 
@@ -87,7 +87,7 @@ if __name__ == '__main__':
     # run_delete_reviews_table()
     # run_fill_pic_base()
     # run_remove_pics(method='md5')  # method='md4' or 'date'
-    run_pic_gis()
+    run_pic_gis('id_with_location_004.json')
     # run_replace_picture()
     # run_merge_pictures()
     # run_update_picbase()
