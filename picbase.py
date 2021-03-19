@@ -39,7 +39,7 @@ def run_update_picbase():
 
 
 def run_show_picture():
-    pyqt_picture.main(mode=Mode.Multi, pic_ids=list(range(1000, 2000)))
+    pyqt_picture.main(mode=Mode.Multi, pic_ids=list(range(28980, 28988)))
 
 
 def run_remove_pics(method='md5', start_id=None, end_id=None):
@@ -61,8 +61,7 @@ def run_pic_gis(json_file):
     picdb.populate_locations_table(json_filename=json_file)
 
 
-def run_update_rotate_checked():
-    json_file = 'id_with_location_004.json'
+def run_update_rotate_checked(json_file):
     picdb.update_rotate_checked(json_file)
 
 
@@ -87,9 +86,9 @@ if __name__ == '__main__':
     # run_delete_reviews_table()
     # run_fill_pic_base()
     # run_remove_pics(method='md5')  # method='md4' or 'date'
-    run_pic_gis('id_with_location_004.json')
+    run_pic_gis('id_with_location_005.json')
     # run_replace_picture()
     # run_merge_pictures()
     # run_update_picbase()
-    # run_update_rotate_checked()
+    # run_update_rotate_checked('id_with_location_005.json')
     # run_show_picture()
