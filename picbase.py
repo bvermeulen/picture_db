@@ -86,9 +86,9 @@ if __name__ == '__main__':
     # run_delete_reviews_table()
     # run_fill_pic_base()
     # run_remove_pics(method='md5')  # method='md4' or 'date'
-    run_pic_gis('id_with_location_005.json')
+    # run_pic_gis('id_with_location_009.json')
     # run_replace_picture()
     # run_merge_pictures()
     # run_update_picbase()
-    # run_update_rotate_checked('id_with_location_005.json')
+    run_update_rotate_checked('id_with_location_009.json')
     # run_show_picture()

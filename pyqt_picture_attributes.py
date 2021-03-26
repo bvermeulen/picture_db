@@ -22,7 +22,10 @@ def pil2pixmap(pil_image):
         return None
 
     bytes_img = io.BytesIO()
-    pil_image.save(bytes_img, format='JPEG')
+    try:
+        pil_image.save(bytes_img, format='JPEG')
+    except:
+        return None
 
     qimg = QImage()
     qimg.loadFromData(bytes_img.getvalue())
@@ -145,6 +148,7 @@ class PictureShow(QWidget):
     def show_picture(self):
         pixmap = pil2pixmap(self.image)
         if not pixmap:
+            print(self.id_list[self.index])
             return
 
         self.pic_lbl.setPixmap(pixmap)
