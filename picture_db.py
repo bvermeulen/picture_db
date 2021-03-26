@@ -432,7 +432,7 @@ class PictureDb:
                       f'date_picture, md5_signature, camera_make, camera_model, '
                       f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
                       f'thumbnail, exif, rotate, rotate_checked) '
-                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s %s, $s) '
+                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s %s, %s) '
                       f'RETURNING id;')
 
         cursor.execute(sql_string, (
