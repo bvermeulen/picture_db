@@ -322,44 +322,6 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def store_picture_meta(cls, filename, cursor):
-        pic_meta, file_meta = cls.get_pic_meta(filename)
-        if not file_meta.file_name:
-            return
-
-        print(f'store meta data for {filename}')
-
-        sql_string = (f'INSERT INTO {cls.table_pictures} ('
-                      f'date_picture, md5_signature, camera_make, camera_model, '
-                      f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                      f'thumbnail, exif, rotate, rotate_checked) '
-                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s %s, %s) '
-                      f'RETURNING id;')
-
-        cursor.execute(sql_string, (
-            pic_meta.date_picture, pic_meta.md5_signature, pic_meta.camera_make,
-            pic_meta.camera_model, pic_meta.gps_latitude, pic_meta.gps_longitude,
-            pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
-            pic_meta.exif, pic_meta.rotate, pic_meta.rotate_checked)
-        )
-        picture_id = cursor.fetchone()[0]
-
-        sql_string = (f'INSERT INTO {cls.table_files} ('
-                      f'picture_id, file_path, file_name, file_modified, file_created, '
-                      f'file_size, file_checked) '
-                      f'VALUES (%s, %s, %s, %s, %s, %s, %s);')
-
-        cursor.execute(sql_string, (
-            picture_id, file_meta.file_path, file_meta.file_name, file_meta.file_modified,
-            file_meta.file_created, file_meta.file_size, True)
-        )
-        lat_lon_str, lat_lon_val = exif.convert_gps(
-            pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude)
-        if lat_lon_str:
-            cls.add_to_locations_table(picture_id, pic_meta.date_picture, lat_lon_val)
-
-    @classmethod
-    @DbUtils.connect
     def store_pictures_base_folder(cls, base_folder, cursor):
         ''' re-initialises the database all previous data will be lost
         '''
@@ -575,7 +537,7 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def select_pics_for_merge(cls, source_folder, destination_folder, cursor):
-        '''  method that checks if picture if in the database. If it is
+        '''  method that checks if picture is in the database. If it is
              not moves picture from source folder to the destination folder
         '''
         progress_message = progress_message_generator(
