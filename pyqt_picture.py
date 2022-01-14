@@ -251,5 +251,5 @@ def main(mode=Mode.Single, filename=None, pic_ids=None):
 
 
 if __name__ == '__main__':
-    main(mode=Mode.Multi, filename='./id_with_location_004.json')
+    main(mode=Mode.Multi, filename='./id_with_location_011.json')
     #, pic_ids=list(range(8500, 9000)))

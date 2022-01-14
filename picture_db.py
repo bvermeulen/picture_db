@@ -955,18 +955,23 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def get_folder_ids(cls, folder, cursor, db_filter=None):
+        ''' get the ids of pictures where folder matches.
+            It only returns ids where the rotation checked is False
+        '''
         if db_filter == 'nogps':
             sql_str = (
                 f'SELECT p.id from {cls.table_pictures} as p '
                 f'JOIN {cls.table_files} as f on f.picture_id = p.id '
                 f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
-                f'length(p.gps_latitude::text) < 3'
+                f'length(p.gps_latitude::text) < 3 AND '
+                f'not p.rotate_checked'
             )
         else:
             sql_str = (
                 f'SELECT p.id from {cls.table_pictures} as p '
                 f'JOIN {cls.table_files} as f on f.picture_id = p.id '
-                f'WHERE lower(f.file_path) LIKE \'%{folder}%\''
+                f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
+                f'not p.rotate_checked'
             )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
