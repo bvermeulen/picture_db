@@ -7,14 +7,13 @@ import os
 from functools import wraps
 import numpy as np
 from shapely.geometry import Point
-import piexif
 import psycopg2
 from PIL import Image, ImageShow
 from recordtype import recordtype
 from decouple import config
 import psutil
+from picture_exif import Exif
 from Utils.plogger import Logger
-
 
 logformat = '%(asctime)s:%(levelname)s:%(message)s'
 Logger.set_logger('.\\picture.log', logformat, 'INFO')
@@ -35,6 +34,7 @@ EPSG_WGS84 = 4326
 # note: the MD5 signature is based on the thumbnail made with the
 # size below. So changing the size will make check on signature invalid
 DATABASE_PICTURE_SIZE = (600, 600)
+exif = Exif()
 
 
 def progress_message_generator(message):
@@ -46,94 +46,6 @@ def progress_message_generator(message):
             f'\r{loop_dash[int(i/print_interval) % 4]} {i} {message}', end='')
         i += 1
         yield
-
-
-class Exif:
-    ''' utility methods to handle picture exif
-    '''
-    codec = 'ISO-8859-1'  # or latin-1
-
-    @classmethod
-    def exif_to_tag(cls, exif_dict):
-        exif_tag_dict = {}
-        thumbnail = exif_dict.pop('thumbnail')
-        exif_tag_dict['thumbnail'] = thumbnail.decode(cls.codec)
-
-        for ifd in exif_dict:
-            exif_tag_dict[ifd] = {}
-            for tag in exif_dict[ifd]:
-                try:
-                    element = exif_dict[ifd][tag].decode(cls.codec)
-
-                except AttributeError:
-                    element = exif_dict[ifd][tag]
-
-                exif_tag_dict[ifd][piexif.TAGS[ifd][tag]["name"]] = element
-
-        return exif_tag_dict
-
-    @staticmethod
-    def convert_gps(gps_latitude, gps_longitude, gps_altitude):
-        ''' input based on tuples of fractions
-        '''
-        def convert_to_degrees(lat_long_value):
-            ref = lat_long_value.get('ref', '')
-            fractions = lat_long_value.get('pos', [0, 1])
-            degrees = fractions[0][0] / fractions[0][1]
-            minutes = fractions[1][0] / fractions[1][1]
-            seconds = fractions[2][0] / fractions[2][1]
-
-            if fractions[1][0] == 0 and fractions[2][0] == 0:
-                lat_long_str = f'{ref} {degrees:.4f}\u00B0'
-
-            elif fractions[2][0] == 0:
-                lat_long_str = f'{ref} {degrees:.0f}\u00B0 {minutes:.2f}"'
-
-            else:
-                lat_long_str = f'{ref} {degrees:.0f}\u00B0 {minutes:.0f}" {seconds:.0f}\''
-
-            lat_long = degrees + minutes / 60 + seconds / 3600
-            if ref in ['S', 'W', 's', 'w']:
-                lat_long *= -1
-
-            return lat_long_str, lat_long
-
-        try:
-            latitude, lat_val = convert_to_degrees(gps_latitude)
-            longitude, lon_val = convert_to_degrees(gps_longitude)
-
-            try:
-                alt_fraction = gps_altitude.get('alt')
-                altitude = f'{alt_fraction[0]/ alt_fraction[1]:.2f}'
-                alt_val = alt_fraction[0] / alt_fraction[1]
-
-            except (TypeError, AttributeError, ZeroDivisionError):
-                altitude = '-'
-                alt_val = 0
-
-            return (
-                f'{latitude}, {longitude}, altitude: {altitude}',
-                (lat_val, lon_val, alt_val))
-
-        except (TypeError, AttributeError, ZeroDivisionError) as _:
-            return None, None
-
-    @staticmethod
-    def remove_display():
-        ''' remove thumbnail picture by killing the display process
-        '''
-        for proc in psutil.process_iter():
-            if proc.name() == display_process:
-                proc.kill()
-
-    @classmethod
-    def exif_to_json(cls, exif_tag_dict):
-        try:
-            return json.dumps(exif_tag_dict)
-
-        except Exception as e:
-            print(f'Convert exif to tag first, error is {e}')
-            raise()
 
 
 class DbUtils:
@@ -212,6 +124,14 @@ class DbUtils:
                 valid = True
 
         return name
+
+    @staticmethod
+    def remove_display():
+        ''' remove thumbnail picture by killing the display process
+        '''
+        for proc in psutil.process_iter():
+            if proc.name() == display_process:
+                proc.kill()
 
 
 class PictureDb:
@@ -356,12 +276,7 @@ class PictureDb:
         except OSError:
             return cls.PicturesTable(*[None]*13), cls.FilesTable(*[None]*8)
 
-        try:
-            exif_dict = piexif.load(im.info.get('exif'))
-            exif_dict = Exif().exif_to_tag(exif_dict)
-
-        except Exception:  #pylint: disable=W0703
-            exif_dict = {}
+        exif_dict = exif.get_exif_dict(im)
 
         if exif_dict:
             pic_meta.camera_make = exif_dict.get('0th').get('Make')
@@ -381,24 +296,10 @@ class PictureDb:
             except (TypeError, ValueError):
                 pic_meta.date_picture = None
 
-            gps = exif_dict.get('GPS')
-            if gps:
-                pic_meta.gps_latitude = json.dumps(
-                    {'ref': gps.get('GPSLatitudeRef'),
-                     'pos': gps.get('GPSLatitude')})
-                pic_meta.gps_longitude = json.dumps(
-                    {'ref': gps.get('GPSLongitudeRef'),
-                     'pos': gps.get('GPSLongitude')})
-                pic_meta.gps_altitude = json.dumps(
-                    {'ref': gps.get('GPSAltitudeRef'),
-                     'alt': gps.get('GPSAltitude')})
-                pic_meta.gps_img_direction = json.dumps(
-                    {'ref': gps.get('GPSImgDirectionRef'),
-                     'dir': gps.get('GPSImgDirection')})
-
-            else:
-                pic_meta.gps_latitude, pic_meta.gps_longitude, \
-                pic_meta.gps_altitude, pic_meta.gps_img_direction = [json.dumps({})]*4
+            (
+                pic_meta.gps_latitude, pic_meta.gps_longitude,
+                pic_meta.gps_altitude, pic_meta.gps_img_direction
+            ) = exif.exifgps_to_json(exif_dict.get('GPS'))
 
         else:
             pic_meta.camera_make, pic_meta.camera_model, \
@@ -411,51 +312,13 @@ class PictureDb:
         im.save(img_bytes, format='JPEG')
         picture_bytes = img_bytes.getvalue()
 
-        pic_meta.thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
+        pic_meta.thumbnail = json.dumps(picture_bytes.decode(exif.codec))
         pic_meta.md5_signature = hashlib.md5(picture_bytes).hexdigest()
-        pic_meta.exif = Exif().exif_to_json(exif_dict)
+        pic_meta.exif = exif.exif_to_json(exif_dict)
         pic_meta.rotate = 0
         pic_meta.rotate_checked = False
 
         return pic_meta, file_meta
-
-    @classmethod
-    @DbUtils.connect
-    def store_picture_meta(cls, filename, cursor):
-        pic_meta, file_meta = cls.get_pic_meta(filename)
-        if not file_meta.file_name:
-            return
-
-        print(f'store meta data for {filename}')
-
-        sql_string = (f'INSERT INTO {cls.table_pictures} ('
-                      f'date_picture, md5_signature, camera_make, camera_model, '
-                      f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                      f'thumbnail, exif, rotate, rotate_checked) '
-                      f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s %s, %s) '
-                      f'RETURNING id;')
-
-        cursor.execute(sql_string, (
-            pic_meta.date_picture, pic_meta.md5_signature, pic_meta.camera_make,
-            pic_meta.camera_model, pic_meta.gps_latitude, pic_meta.gps_longitude,
-            pic_meta.gps_altitude, pic_meta.gps_img_direction, pic_meta.thumbnail,
-            pic_meta.exif, pic_meta.rotate, pic_meta.rotate_checked)
-        )
-        picture_id = cursor.fetchone()[0]
-
-        sql_string = (f'INSERT INTO {cls.table_files} ('
-                      f'picture_id, file_path, file_name, file_modified, file_created, '
-                      f'file_size, file_checked) '
-                      f'VALUES (%s, %s, %s, %s, %s, %s, %s);')
-
-        cursor.execute(sql_string, (
-            picture_id, file_meta.file_path, file_meta.file_name, file_meta.file_modified,
-            file_meta.file_created, file_meta.file_size, True)
-        )
-        lat_lon_str, lat_lon_val = Exif().convert_gps(
-            pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude)
-        if lat_lon_str:
-            cls.add_to_locations_table(picture_id, pic_meta.date_picture, lat_lon_val)
 
     @classmethod
     @DbUtils.connect
@@ -501,7 +364,7 @@ class PictureDb:
                         file_meta.file_modified, file_meta.file_created,
                         file_meta.file_size, True
                     ))
-                    lat_lon_str, lat_lon_val = Exif().convert_gps(
+                    lat_lon_str, lat_lon_val = exif.convert_gps(
                         pic_meta.gps_latitude, pic_meta.gps_longitude,
                         pic_meta.gps_altitude
                     )
@@ -576,7 +439,7 @@ class PictureDb:
                             file_meta.file_size, True
                         ))
 
-                        lat_lon_str, lat_lon_val = Exif().convert_gps(
+                        lat_lon_str, lat_lon_val = exif.convert_gps(
                             pic_meta.gps_latitude, pic_meta.gps_longitude,
                             pic_meta.gps_altitude)
                         if lat_lon_str:
@@ -622,7 +485,8 @@ class PictureDb:
         data_from_table_pictures = cursor.fetchone()
 
         if not data_from_table_pictures:
-            return None, None, None, None
+            return None, None, None, None, (None, None, None)
+
         else:
             sql_string = f'SELECT * FROM {cls.table_files} WHERE picture_id={_id};'
             cursor.execute(sql_string)
@@ -662,18 +526,18 @@ class PictureDb:
 
         if pic_meta.thumbnail:
             img_bytes = io.BytesIO(
-                pic_meta.thumbnail.encode(Exif().codec))
+                pic_meta.thumbnail.encode(exif.codec))
             im = Image.open(img_bytes)
 
-        lat_lon_str, _ = Exif().convert_gps(
+        lat_lon_str, lat_lon_val = exif.convert_gps(
             pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude)
 
-        return im, pic_meta, file_meta, lat_lon_str
+        return im, pic_meta, file_meta, lat_lon_str, lat_lon_val
 
     @classmethod
     @DbUtils.connect
     def select_pics_for_merge(cls, source_folder, destination_folder, cursor):
-        '''  method that checks if picture if in the database. If it is
+        '''  method that checks if picture is in the database. If it is
              not moves picture from source folder to the destination folder
         '''
         progress_message = progress_message_generator(
@@ -827,7 +691,7 @@ class PictureDb:
                     'id': pic_tuple[0],
                     'file_path': file_path,
                     'file_name': file_name,
-                    'thumbnail': io.BytesIO(pic_tuple[1].encode(Exif().codec))})
+                    'thumbnail': io.BytesIO(pic_tuple[1].encode(exif.codec))})
 
             if not pic_selection:
                 continue
@@ -983,10 +847,12 @@ class PictureDb:
             f'VALUES (%s, %s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) '
         )
 
+        #TODO fix patch elevation is Null
+        altitude = 0.0 if location[2] is None else location[2]
         cursor.execute(
             sql_string_locations,
             (picture_id, date_picture,
-             location[0], location[1], location[2],
+             location[0], location[1], altitude,
              point.wkb_hex, EPSG_WGS84)
         )
         return True
@@ -1011,7 +877,7 @@ class PictureDb:
         counter = 0
         for i, pic in enumerate(cursor.fetchall()):
 
-            lat_lon_str, lat_lon_val = Exif().convert_gps(pic[2], pic[3], pic[4])
+            lat_lon_str, lat_lon_val = exif.convert_gps(pic[2], pic[3], pic[4])
             if lat_lon_str:
                 if cls.add_to_locations_table(pic[0], pic[1], lat_lon_val):
                     counter += 1
@@ -1046,7 +912,7 @@ class PictureDb:
         image.save(img_bytes, format='JPEG')
         picture_bytes = img_bytes.getvalue()
 
-        thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
+        thumbnail = json.dumps(picture_bytes.decode(exif.codec))
 
         sql_str = (
             f'UPDATE {cls.table_pictures} '
@@ -1055,6 +921,60 @@ class PictureDb:
             f'WHERE id= (%s) '
         )
         cursor.execute(sql_str, (thumbnail, rotate, picture_id))
+
+    @classmethod
+    @DbUtils.connect
+    def store_attributes(cls, picture_id, image, pic_meta, cursor):
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format='JPEG')
+        picture_bytes = img_bytes.getvalue()
+
+        thumbnail = json.dumps(picture_bytes.decode(exif.codec))
+        pic_meta = exif.convert_to_json(pic_meta)
+
+        sql_str = (
+            f'UPDATE {cls.table_pictures} '
+            f'SET thumbnail = (%s), '
+            f'date_picture = (%s), '
+            f'camera_make = (%s), '
+            f'camera_model = (%s), '
+            f'gps_latitude = (%s), '
+            f'gps_longitude = (%s), '
+            f'gps_altitude = (%s), '
+            f'gps_img_dir = (%s), '
+            f'rotate = (%s) '
+            f'WHERE id= (%s) '
+        )
+        cursor.execute(sql_str, (
+            thumbnail,
+            pic_meta.date_picture, pic_meta.camera_make, pic_meta.camera_model,
+            pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude,
+            pic_meta.gps_img_direction, pic_meta.rotate, picture_id
+        ))
+
+    @classmethod
+    @DbUtils.connect
+    def get_folder_ids(cls, folder, cursor, db_filter=None):
+        ''' get the ids of pictures where folder matches.
+            It only returns ids where the rotation checked is False
+        '''
+        if db_filter == 'nogps':
+            sql_str = (
+                f'SELECT p.id from {cls.table_pictures} as p '
+                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
+                f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
+                f'length(p.gps_latitude::text) < 3 AND '
+                f'not p.rotate_checked'
+            )
+        else:
+            sql_str = (
+                f'SELECT p.id from {cls.table_pictures} as p '
+                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
+                f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
+                f'not p.rotate_checked'
+            )
+        cursor.execute(sql_str)
+        return [val[0] for val in cursor.fetchall()]
 
     @classmethod
     @DbUtils.connect
@@ -1103,7 +1023,7 @@ class PictureDb:
         image.save(img_bytes, format='JPEG')
         picture_bytes = img_bytes.getvalue()
 
-        thumbnail = json.dumps(picture_bytes.decode(Exif().codec))
+        thumbnail = json.dumps(picture_bytes.decode(exif.codec))
         md5_signature = hashlib.md5(picture_bytes).hexdigest()
 
         sql_str = (
