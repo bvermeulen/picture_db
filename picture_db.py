@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import shutil
 import datetime
 import hashlib
@@ -9,7 +10,6 @@ import numpy as np
 from shapely.geometry import Point
 import psycopg2
 from PIL import Image, ImageShow
-from recordtype import recordtype
 from decouple import config
 import psutil
 from picture_exif import Exif
@@ -29,6 +29,36 @@ elif os.name == 'posix':
 
 else:
     assert False, f'operating system: {os.name} is not implemented'
+
+
+@dataclass
+class PicturesTable:
+    id: int
+    date_picture: datetime.datetime
+    md5_signature: str
+    camera_make: str
+    camera_model: str
+    gps_latitude: dict
+    gps_longitude: dict
+    gps_altitude: dict
+    gps_img_direction: dict
+    thumbnail: str
+    exif: dict
+    rotate: int
+    rotate_checked: bool
+
+
+@dataclass
+class FilesTable:
+    id: int
+    picture_id: int
+    file_path: str
+    file_name: str
+    file_modified: datetime.datetime
+    file_created: datetime.datetime
+    file_size: int
+    file_checked: bool
+
 
 EPSG_WGS84 = 4326
 # note: the MD5 signature is based on the thumbnail made with the
@@ -140,22 +170,6 @@ class PictureDb:
     table_reviews = 'reviews'
     table_locations = 'locations'
 
-    PicturesTable = recordtype('PicturesTable',
-                               'id, date_picture, md5_signature, camera_make, '
-                               'camera_model, gps_latitude, gps_longitude, '
-                               'gps_altitude, gps_img_direction, thumbnail, exif, '
-                               'rotate, rotate_checked')
-
-    FilesTable = recordtype('FilesTable',
-                            'id, picture_id, file_path, file_name, file_modified, '
-                            'file_created, file_size, file_checked')
-
-    ReviewTable = recordtype('ReviewTable',
-                             'id, picture_id, reviewer_name, review_date')
-
-    LocationsTable = recordtype('LocationsTable',
-                                'id, picture_id, date_picture, '
-                                'latitude, longitude, altitude, geom')
 
     @classmethod
     @DbUtils.connect
@@ -167,29 +181,22 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def create_pictures_table(cls, cursor):
-        pics_tbl = cls.PicturesTable(
-            id='id SERIAL PRIMARY KEY',
-            date_picture='date_picture TIMESTAMP',
-            md5_signature='md5_signature VARCHAR(32)',
-            camera_make='camera_make VARCHAR(50)',
-            camera_model='camera_model VARCHAR(50)',
-            gps_latitude='gps_latitude JSON',
-            gps_longitude='gps_longitude JSON',
-            gps_altitude='gps_altitude JSON',
-            gps_img_direction='gps_img_dir JSON',
-            thumbnail='thumbnail JSON',
-            exif='exif JSON',
-            rotate='rotate INTEGER DEFAULT 0',
-            rotate_checked='rotate_checked BOOLEAN DEFAULT FALSE',
-        )
         sql_string = (
-            f'CREATE TABLE {cls.table_pictures} '
-            f'({pics_tbl.id}, {pics_tbl.date_picture}, '
-            f'{pics_tbl.md5_signature}, {pics_tbl.camera_make}, '
-            f'{pics_tbl.camera_model}, {pics_tbl.gps_latitude}, '
-            f'{pics_tbl.gps_longitude}, {pics_tbl.gps_altitude}, '
-            f'{pics_tbl.gps_img_direction}, {pics_tbl.thumbnail}, '
-            f'{pics_tbl.exif}, {pics_tbl.rotate}, {pics_tbl.rotate_checked});'
+            f'CREATE TABLE {cls.table_pictures} ('
+            f'id SERIAL PRIMARY KEY, '
+            f'date_picture TIMESTAMP, '
+            f'md5_signature VARCHAR(32), '
+            f'camera_make VARCHAR(50), '
+            f'camera_model VARCHAR(50), '
+            f'gps_latitude JSON, '
+            f'gps_longitude JSON, '
+            f'gps_altitude JSON, '
+            f'gps_img_dir JSON, '
+            f'thumbnail JSON, '
+            f'exif JSON, '
+            f'rotate INTEGER DEFAULT 0, '
+            f'rotate_checked BOOLEAN DEFAULT FALSE'
+            f');'
         )
         print(f'create table {cls.table_pictures}')
         cursor.execute(sql_string)
@@ -197,70 +204,56 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def create_files_table(cls, cursor):
-        files_tbl = cls.FilesTable(
-            id='id SERIAL PRIMARY KEY',
-            picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
-                        f'ON DELETE CASCADE UNIQUE NOT NULL'),
-            file_path='file_path VARCHAR(250)',
-            file_name='file_name VARCHAR(250)',
-            file_modified='file_modified TIMESTAMP',
-            file_created='file_created TIMESTAMP',
-            file_size='file_size INTEGER',
-            file_checked='file_checked BOOLEAN'
+        sql_string = (
+            f'CREATE TABLE {cls.table_files} ('
+            f'id SERIAL PRIMARY KEY, '
+            f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE UNIQUE NOT NULL, '
+            f'file_path VARCHAR(250), '
+            f'file_name VARCHAR(250), '
+            f'file_modified TIMESTAMP, '
+            f'file_created TIMESTAMP, '
+            f'file_size INTEGER, '
+            f'file_checked BOOLEAN'
+            f');'
         )
-        sql_string = (f'CREATE TABLE {cls.table_files} '
-                      f'({files_tbl.id}, {files_tbl.picture_id}, '
-                      f'{files_tbl.file_path}, {files_tbl.file_name}, '
-                      f'{files_tbl.file_modified}, {files_tbl.file_created}, '
-                      f'{files_tbl.file_size}, {files_tbl.file_checked});')
-
         print(f'create table {cls.table_files}')
         cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
     def create_reviews_table(cls, cursor):
-        reviews_tbl = cls.ReviewTable(
-            id='id SERIAL PRIMARY KEY',
-            picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
-                        f'ON DELETE CASCADE NOT NULL'),
-            reviewer_name='reviewer_name VARCHAR(20)',
-            review_date='review_date TIMESTAMP'
+        sql_string = (
+            f'CREATE TABLE {cls.table_reviews} ('
+            f'id SERIAL PRIMARY KEY, '
+            f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE NOT NULL, '
+            f'reviewer_name VARCHAR(20), '
+            f'review_date TIMESTAMP'
+            f');'
         )
-        sql_string = (f'CREATE TABLE {cls.table_reviews} '
-                      f'({reviews_tbl.id}, {reviews_tbl.picture_id}, '
-                      f'{reviews_tbl.reviewer_name}, {reviews_tbl.review_date});')
-
         print(f'create table {cls.table_reviews}')
         cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
     def create_locations_table(cls, cursor):
-        locs_tbl = cls.LocationsTable(
-            id='id SERIAL PRIMARY KEY',
-            picture_id=(f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) '
-                        f'ON DELETE CASCADE UNIQUE'),
-            date_picture='date_picture TIMESTAMP NOT NULL',
-            latitude='latitude DOUBLE PRECISION NOT NULL',
-            longitude='longitude DOUBLE PRECISION NOT NULL',
-            altitude='altitude REAL NOT NULL',
-            geom=f'geom geometry(Point, {EPSG_WGS84}) '
-        )
         sql_string = (
             f'CREATE TABLE {cls.table_locations} ('
-            f'{locs_tbl.id}, {locs_tbl.picture_id}, {locs_tbl.date_picture}, '
-            f'{locs_tbl.latitude}, {locs_tbl.longitude}, {locs_tbl.altitude}, '
-            f'{locs_tbl.geom} )'
+            f'id SERIAL PRIMARY KEY, '
+            f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE UNIQUE, '
+            f'date_picture TIMESTAMP NOT NULL, '
+            f'latitude DOUBLE PRECISION NOT NULL, '
+            f'longitude DOUBLE PRECISION NOT NULL, '
+            f'altitude REAL NOT NULL, '
+            f'geom geometry(Point, {EPSG_WGS84})'
+            f');'
         )
-
         print(f'create table {cls.table_locations}')
         cursor.execute(sql_string)
 
     @classmethod
     def get_pic_meta(cls, filename):
-        pic_meta = cls.PicturesTable(*[None]*13)
-        file_meta = cls.FilesTable(*[None]*8)
+        pic_meta = PicturesTable(*[None]*13)
+        file_meta = FilesTable(*[None]*8)
 
         # file attributes
         file_stat = os.stat(filename)
@@ -274,7 +267,7 @@ class PictureDb:
         try:
             im = Image.open(filename)
         except OSError:
-            return cls.PicturesTable(*[None]*13), cls.FilesTable(*[None]*8)
+            return PicturesTable(*[None]*13), FilesTable(*[None]*8)
 
         exif_dict = exif.get_exif_dict(im)
 
@@ -476,8 +469,8 @@ class PictureDb:
                 _id: picture id number in database: integer
             :returns:
                 im: PIL image
-                pic_meta: recordtype PicturesTable
-                file_meta: recordtype FilesTable
+                pic_meta: PicturesTable
+                file_meta: FilesTable
                 lat_lon_str: string
         '''
         sql_string = f'SELECT * FROM {cls.table_pictures} WHERE id={_id};'
@@ -494,7 +487,7 @@ class PictureDb:
             if not data_from_table_files:
                 return None, None, None, None
 
-        pic_meta = cls.PicturesTable(
+        pic_meta = PicturesTable(
             id=data_from_table_pictures[0],
             date_picture=data_from_table_pictures[1],
             md5_signature=data_from_table_pictures[2],
@@ -510,7 +503,7 @@ class PictureDb:
             rotate_checked=data_from_table_pictures[12],
         )
 
-        file_meta = cls.FilesTable(
+        file_meta = FilesTable(
             id=data_from_table_files[0],
             picture_id=data_from_table_files[1],
             file_path=data_from_table_files[2],
