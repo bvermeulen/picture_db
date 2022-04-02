@@ -58,7 +58,11 @@ def run_remove_pics(method='md5', start_id=None, end_id=None):
 
 
 def run_pic_gis(json_file):
-    picdb.populate_locations_table(json_filename=json_file)
+    if json_file:
+        picdb.populate_locations_table(json_filename=json_file)
+
+    else:
+        picdb.populate_locations_table()
 
 
 def run_update_rotate_checked(json_file):
@@ -86,9 +90,9 @@ if __name__ == '__main__':
     # run_delete_reviews_table()
     # run_fill_pic_base()
     # run_remove_pics(method='md5')  # method='md4' or 'date'
-    run_pic_gis('id_with_location_013.json')
     # run_replace_picture()
     # run_merge_pictures()
     # run_update_picbase()
-    run_update_rotate_checked('id_with_location_013.json')
+    # run_pic_gis('') # 'id_with_location_013.json')
+    run_update_rotate_checked('ids.json')
     # run_show_picture()

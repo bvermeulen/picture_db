@@ -1,31 +1,32 @@
 import sys
 import io
-from pathlib import PureWindowsPath
+from enum import Enum
+import json
 from PIL import Image
 from PyQt5.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QFormLayout, QLabel, QApplication, QPushButton,
-    QFileDialog, QShortcut, QLineEdit,
+    QWidget, QHBoxLayout, QVBoxLayout, QLabel, QApplication, QPushButton,
+    QShortcut
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QImage, QPixmap
-from picture_exif import Exif
 from picture_db import PictureDb
 
 anticlockwise_symbol = '\u21b6'
 clockwise_symbol = '\u21b7'
 right_arrow_symbol = '\u25B6'
 left_arrow_symbol = '\u25C0'
-exif = Exif()
+
+class Mode(Enum):
+    Single = 1
+    Multi = 2
+
 
 def pil2pixmap(pil_image):
     if pil_image is None:
         return None
 
     bytes_img = io.BytesIO()
-    try:
-        pil_image.save(bytes_img, format='JPEG')
-    except:
-        return None
+    pil_image.save(bytes_img, format='JPEG')
 
     qimg = QImage()
     qimg.loadFromData(bytes_img.getvalue())
@@ -63,81 +64,65 @@ def meta_to_text(pic_meta, file_meta, lat_lon_str, index=None, total=None):
 
 class PictureShow(QWidget):
 
-    def __init__(self):
+    def __init__(self, mode=Mode.Single):
         super().__init__()
 
+        self.mode = mode
         self.picdb = PictureDb()
 
         self.rotate = None
         self.index = None
         self.total = None
-        self.file_path = None
         self.id_list = []
-        self.lat_lon_str = ''
-        self.lat_lon_val = (None, None, None)
 
         self.initUI()
 
     def initUI(self):
         vbox = QVBoxLayout()
 
-        hbox_pic_action = QHBoxLayout()
+        hbox_pic_text = QHBoxLayout()
 
         self.pic_lbl = QLabel()
-
-        vbox_text_action = QVBoxLayout()
+        hbox_pic_text.addWidget(self.pic_lbl)
         self.text_lbl = QLabel()
         self.text_lbl.setAlignment(Qt.AlignTop)
-
-        box_form = QFormLayout()
-        self.e_make = QLineEdit()
-        self.e_model = QLineEdit()
-        self.e_pic_date = QLineEdit()
-        self.e_lat_lon = QLineEdit()
-        self.e_lat_lon.editingFinished.connect(self.update_attributes)
-        box_form.addRow('Camera make', self.e_make)
-        box_form.addRow('Camera model', self.e_model)
-        box_form.addRow('Date picture', self.e_pic_date)
-        box_form.addRow('Latitude, Longitude', self.e_lat_lon)
-        vbox_text_action.addWidget(self.text_lbl)
-        vbox_text_action.addLayout(box_form)
-
-        hbox_pic_action.addWidget(self.pic_lbl)
-        hbox_pic_action.addLayout(vbox_text_action)
+        hbox_pic_text.addWidget(self.text_lbl)
 
         hbox_buttons = QHBoxLayout()
         quit_button = QPushButton('Quit')
         quit_button.clicked.connect(self.cntr_quit)
-        prev_button = QPushButton(left_arrow_symbol)
-        prev_button.clicked.connect(self.cntr_prev)
-        next_button = QPushButton(right_arrow_symbol)
-        next_button.clicked.connect(self.cntr_next)
+        if self.mode == Mode.Multi:
+            prev_button = QPushButton(left_arrow_symbol)
+            prev_button.clicked.connect(self.cntr_prev)
+            next_button = QPushButton(right_arrow_symbol)
+            next_button.clicked.connect(self.cntr_next)
+
         save_button = QPushButton('save')
         save_button.clicked.connect(self.cntr_save)
         clockwise_button = QPushButton(clockwise_symbol)
         clockwise_button.clicked.connect(self.rotate_clockwise)
         anticlockwise_button = QPushButton(anticlockwise_symbol)
         anticlockwise_button.clicked.connect(self.rotate_anticlockwise)
-        folderselect_button = QPushButton('Select folder')
-        folderselect_button.clicked.connect(self.cntr_folderselect)
-
         # hbox_buttons.addStretch()
         hbox_buttons.setAlignment(Qt.AlignLeft)
-        hbox_buttons.addWidget(folderselect_button)
         hbox_buttons.addWidget(anticlockwise_button)
         hbox_buttons.addWidget(clockwise_button)
-        hbox_buttons.addWidget(prev_button)
-        hbox_buttons.addWidget(next_button)
+        if self.mode == Mode.Multi:
+            hbox_buttons.addWidget(prev_button)
+            hbox_buttons.addWidget(next_button)
+
         hbox_buttons.addWidget(save_button)
         hbox_buttons.addWidget(quit_button)
 
-        vbox.addLayout(hbox_pic_action)
+        vbox.addLayout(hbox_pic_text)
         vbox.addLayout(hbox_buttons)
 
         self.setLayout(vbox)
 
-        QShortcut(Qt.Key_Left, self, self.cntr_prev)
-        QShortcut(Qt.Key_Right, self, self.cntr_next)
+        if self.mode == Mode.Multi:
+            QShortcut(Qt.Key_Left, self, self.cntr_prev)
+            QShortcut(Qt.Key_Right, self, self.cntr_next)
+
         QShortcut(Qt.Key_S, self, self.cntr_save)
         QShortcut(Qt.Key_Space, self, self.rotate_clockwise)
 
@@ -148,7 +133,6 @@ class PictureShow(QWidget):
     def show_picture(self):
         pixmap = pil2pixmap(self.image)
         if not pixmap:
-            print(self.id_list[self.index])
             return
 
         self.pic_lbl.setPixmap(pixmap)
@@ -156,11 +140,6 @@ class PictureShow(QWidget):
             self.pic_meta, self.file_meta, self.lat_lon_str,
             index=self.index, total=self.total)
         self.text_lbl.setText(self.text)
-        self.e_make.setText(self.pic_meta.camera_make)
-        self.e_model.setText(self.pic_meta.camera_model)
-        self.e_pic_date.setText(str(self.pic_meta.date_picture))
-        self.e_lat_lon.setText(', '.join([f'{v:0.5f}' for v in self.lat_lon_val
-                               if isinstance(v, (float, int))]))
 
     def rotate_clockwise(self):
         # note degrees are defined in counter clockwise direction !
@@ -181,7 +160,7 @@ class PictureShow(QWidget):
             self.show_picture()
 
     def cntr_select_pic(self, picture_id):
-        self.image, self.pic_meta, self.file_meta, self.lat_lon_str, self.lat_lon_val = (
+        self.image, self.pic_meta, self.file_meta, self.lat_lon_str, _ = (
             self.picdb.load_picture_meta(picture_id))
 
         if self.pic_meta:
@@ -193,7 +172,7 @@ class PictureShow(QWidget):
         if self.index < 0:
             self.index = len(self.id_list) - 1
 
-        self.image, self.pic_meta, self.file_meta, self.lat_lon_str, self.lat_lon_val = (
+        self.image, self.pic_meta, self.file_meta, self.lat_lon_str, _ = (
             self.picdb.load_picture_meta(self.id_list[self.index]))
 
         if self.pic_meta:
@@ -205,7 +184,7 @@ class PictureShow(QWidget):
         if self.index > len(self.id_list) - 1:
             self.index = 0
 
-        self.image, self.pic_meta, self.file_meta, self.lat_lon_str, self.lat_lon_val = (
+        self.image, self.pic_meta, self.file_meta, self.lat_lon_str, _ = (
             self.picdb.load_picture_meta(self.id_list[self.index]))
 
         if self.pic_meta:
@@ -213,38 +192,64 @@ class PictureShow(QWidget):
             self.show_picture()
 
     def cntr_save(self):
-        self.picdb.store_attributes(
-            self.id_list[self.index], self.image, self.pic_meta)
+        self.picdb.update_image(
+            self.id_list[self.index], self.image, self.rotate)
 
-    def cntr_folderselect(self):
-        self.file_path = QFileDialog.getExistingDirectory(self, 'Select Folder')
-        self.file_path = str(
-            PureWindowsPath(self.file_path)).lower().replace('\\', '\\\\')
-        self.id_list = self.picdb.get_folder_ids(self.file_path, db_filter='nogps')
+    def call_by_id(self):
+        picture_id = int(input('Picture id [0 to exit]: '))
+        if picture_id == 0:
+            self.cntr_quit()
+            sys.exit()
 
-        if self.id_list:
-            self.index = 0
-            self.total = len(self.id_list)
-            self.cntr_select_pic(self.id_list[self.index])
+        self.cntr_select_pic(picture_id)
+        self.call_by_id()
+
+    def call_by_list(self, id_list):
+        self.id_list = id_list
+        self.index = 0
+        self.total = len(self.id_list)
+        self.cntr_select_pic(self.id_list[self.index])
 
     def cntr_quit(self):
         self.close()
 
-    def update_attributes(self):
-        self.pic_meta.camera_make = self.e_make.text()
-        self.pic_meta.camera_model = self.e_model.text()
-        self.pic_meta.date_picture = exif.format_date(self.e_pic_date.text())
-        (
-            self.pic_meta.gps_latitude, self.pic_meta.gps_longitude,
-            self.pic_meta.gps_altitude, self.pic_meta.gps_img_direction
-        ) = exif.decimalgps_to_json(self.e_lat_lon.text())
 
-
-def main():
+def main(mode=Mode.Single, filename=None, pic_ids=None):
+    #pylint: disable='anomalous-backslash-in-string
+    '''
+    make a selection in psql, for example:
+    \o name.json
+    select json_build_object('id', json_agg(id)) from pictures
+        where gps_latitude ->> 'ref' in ('N', 'S');
+    '''
     app = QApplication([])
-    _ = PictureShow()
+
+    if mode == Mode.Multi:
+        if filename:
+            with open(filename) as json_file:
+                id_list = json.load(json_file)
+
+        elif pic_ids:
+            id_list = pic_ids
+
+        else:
+            print('either give json file or list of picture ids')
+            sys.exit()
+
+        pic_show = PictureShow(mode=mode)
+        pic_show.call_by_list(id_list)
+
+    elif mode == Mode.Single:
+        pic_show = PictureShow(mode=mode)
+        pic_show.call_by_id()
+
+    else:
+        print('incorrect mode')
+        sys.exit()
+
     sys.exit(app.exec_())
 
 
 if __name__ == '__main__':
-    main()
+    main(mode=Mode.Multi, filename='./ids.json')
+    #, pic_ids=list(range(8500, 9000)))

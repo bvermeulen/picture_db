@@ -191,6 +191,18 @@ class Exif:
             return datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
 
         except ValueError:
+            pass
+
+        try:
+            return datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M')
+
+        except ValueError:
+            pass
+
+        try:
+            return datetime.datetime.strptime(date_str, '%Y-%m-%d')
+
+        except ValueError:
             return None
 
     @staticmethod

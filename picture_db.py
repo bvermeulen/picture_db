@@ -10,6 +10,7 @@ import numpy as np
 from shapely.geometry import Point
 import psycopg2
 from PIL import Image, ImageShow
+from pillow_heif import register_heif_opener
 from decouple import config
 import psutil
 from picture_exif import Exif
@@ -18,6 +19,8 @@ from Utils.plogger import Logger
 logformat = '%(asctime)s:%(levelname)s:%(message)s'
 Logger.set_logger('.\\picture.log', logformat, 'INFO')
 logger = Logger.getlogger()
+
+register_heif_opener()
 
 if os.name == 'nt':
     ImageShow.WindowsViewer.format = 'PNG'
@@ -255,6 +258,15 @@ class PictureDb:
         pic_meta = PicturesTable(*[None]*13)
         file_meta = FilesTable(*[None]*8)
 
+        if filename[-4:].lower() != '.jpg' and filename[-5:].lower() != '.heic':
+            return pic_meta, file_meta
+
+        try:
+            im = Image.open(filename)
+
+        except OSError:
+            return pic_meta, file_meta
+
         # file attributes
         file_stat = os.stat(filename)
         file_meta.file_name = os.path.basename(filename)
@@ -264,11 +276,6 @@ class PictureDb:
         file_meta.file_size = file_stat.st_size
 
         # exif attributes
-        try:
-            im = Image.open(filename)
-        except OSError:
-            return PicturesTable(*[None]*13), FilesTable(*[None]*8)
-
         exif_dict = exif.get_exif_dict(im)
 
         if exif_dict:
@@ -335,38 +342,35 @@ class PictureDb:
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
+                pic_meta, file_meta = cls.get_pic_meta(
+                    os.path.join(foldername, filename))
+                if not file_meta.file_name:
+                    continue
 
-                if filename[-4:] in ['.jpg', '.JPG']:
-                    pic_meta, file_meta = cls.get_pic_meta(
-                        os.path.join(foldername, filename))
-                    if not file_meta.file_name:
-                        continue
+                cursor.execute(sql_pictures, (
+                    pic_meta.date_picture, pic_meta.md5_signature,
+                    pic_meta.camera_make, pic_meta.camera_model,
+                    pic_meta.gps_latitude, pic_meta.gps_longitude,
+                    pic_meta.gps_altitude, pic_meta.gps_img_direction,
+                    pic_meta.thumbnail, pic_meta.exif,
+                    pic_meta.rotate, pic_meta.rotate_checked
+                ))
+                picture_id = cursor.fetchone()[0]
 
-                    cursor.execute(sql_pictures, (
-                        pic_meta.date_picture, pic_meta.md5_signature,
-                        pic_meta.camera_make, pic_meta.camera_model,
-                        pic_meta.gps_latitude, pic_meta.gps_longitude,
-                        pic_meta.gps_altitude, pic_meta.gps_img_direction,
-                        pic_meta.thumbnail, pic_meta.exif,
-                        pic_meta.rotate, pic_meta.rotate_checked
-                    ))
-                    picture_id = cursor.fetchone()[0]
+                cursor.execute(sql_files, (
+                    picture_id, file_meta.file_path, file_meta.file_name,
+                    file_meta.file_modified, file_meta.file_created,
+                    file_meta.file_size, True
+                ))
+                lat_lon_str, lat_lon_val = exif.convert_gps(
+                    pic_meta.gps_latitude, pic_meta.gps_longitude,
+                    pic_meta.gps_altitude
+                )
+                if lat_lon_str:
+                    cls.add_to_locations_table(
+                        picture_id, pic_meta.date_picture, lat_lon_val)
 
-                    cursor.execute(sql_files, (
-                        picture_id, file_meta.file_path, file_meta.file_name,
-                        file_meta.file_modified, file_meta.file_created,
-                        file_meta.file_size, True
-                    ))
-                    lat_lon_str, lat_lon_val = exif.convert_gps(
-                        pic_meta.gps_latitude, pic_meta.gps_longitude,
-                        pic_meta.gps_altitude
-                    )
-                    if lat_lon_str:
-                        cls.add_to_locations_table(
-                            picture_id, pic_meta.date_picture, lat_lon_val)
-
-                    next(progress_message)
-
+                next(progress_message)
         print()
 
     @classmethod
@@ -394,7 +398,7 @@ class PictureDb:
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
 
-                if filename[-4:] in ['.jpg', '.JPG']:
+                if filename[-4:].lower() == '.jpg' or filename[-5:].lower() == '.heic':
                     sql_foldername = foldername.replace("'", "''")
                     sql_filename = filename.replace("'", "''")
 
@@ -544,13 +548,12 @@ class PictureDb:
         log_lines = []
         for foldername, _, filenames in os.walk(source_folder):
             for filename in filenames:
-                if filename[-4:] not in ['.jpg', '.JPG']:
+                full_file_name = os.path.join(foldername, filename)
+                pic_meta, file_meta = cls.get_pic_meta(full_file_name)
+                if not file_meta.file_name:
                     continue
 
-                full_file_name = os.path.join(foldername, filename)
                 next(progress_message)
-
-                pic_meta, file_meta = cls.get_pic_meta(full_file_name)
 
                 # check on md5_signature
                 sql_string = (f'SELECT id FROM {cls.table_pictures} WHERE '
@@ -800,15 +803,14 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def add_to_locations_table(cls, picture_id, date_picture, location, cursor):
+    def add_to_locations_table(cls, picture_id, location, cursor):
         ''' add record to locations map. It first checks if picture_id is already
             in database.
             :arguments:
                 picture_id: integer
-                data_picture: time stamp or None
                 location: tuple(latitude, longitude, altitude)
             :return:
-                True: if record is add
+                True: if record is added
                 False: if record already in database
         '''
         sql_string = (
@@ -822,62 +824,53 @@ class PictureDb:
         # Point has format (Longitude, Latitude) like (x, y)
         point = Point(location[1], location[0])
 
-        if date_picture:
-            pass
-
-        else:
-            sql_string_files = (
-                f'select file_modified from {cls.table_files} '
-                f'where picture_id={picture_id} '
-            )
-
-            cursor.execute(sql_string_files)
-            date_picture = cursor.fetchone()
-
         sql_string_locations = (
             f'INSERT INTO {cls.table_locations} '
-            f'(picture_id, date_picture, latitude, longitude, altitude, geom) '
-            f'VALUES (%s, %s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) '
+            f'(picture_id, latitude, longitude, altitude, geom) '
+            f'VALUES (%s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) '
         )
 
         #TODO fix patch elevation is Null
         altitude = 0.0 if location[2] is None else location[2]
         cursor.execute(
-            sql_string_locations,
-            (picture_id, date_picture,
-             location[0], location[1], altitude,
-             point.wkb_hex, EPSG_WGS84)
+            sql_string_locations, (
+                picture_id, location[0], location[1], altitude,
+                point.wkb_hex, EPSG_WGS84
+            )
         )
         return True
 
     @classmethod
     @DbUtils.connect
-    def populate_locations_table(cls, cursor, json_filename=None):
-        if json_filename is None:
-            sql_string_pictures = (
-                f'select id, date_picture, gps_latitude, gps_longitude, gps_altitude '
-                f'from {cls.table_pictures} where not rotate_checked'
-            )
-        else:
+    def populate_locations_table(cls, cursor, json_filename=None, picture_ids=[]):
+        if json_filename is not None:
             with open(json_filename) as json_file:
                 picture_ids = tuple(json.load(json_file))
             sql_string_pictures = (
-                f'select id, date_picture, gps_latitude, gps_longitude, gps_altitude '
+                f'select id, gps_latitude, gps_longitude, gps_altitude '
                 f'from {cls.table_pictures} where id in {picture_ids}'
+            )
+        elif picture_ids:
+            picture_ids = tuple(picture_ids)
+            sql_string_pictures = (
+                f'select id, gps_latitude, gps_longitude, gps_altitude '
+                f'from {cls.table_pictures} where id in {picture_ids}'
+            )
+        else:
+            sql_string_pictures = (
+                f'select id, gps_latitude, gps_longitude, gps_altitude '
+                f'from {cls.table_pictures} where not rotate_checked'
             )
         cursor.execute(sql_string_pictures)
 
         counter = 0
         for i, pic in enumerate(cursor.fetchall()):
 
-            lat_lon_str, lat_lon_val = exif.convert_gps(pic[2], pic[3], pic[4])
+            lat_lon_str, lat_lon_val = exif.convert_gps(pic[1], pic[2], pic[3])
             if lat_lon_str:
-                if cls.add_to_locations_table(pic[0], pic[1], lat_lon_val):
+                if cls.add_to_locations_table(pic[0], lat_lon_val):
                     counter += 1
-                    print(
-                        f'{i:5}: {counter:4} pic id: {pic[0]}, '
-                        f'date: {pic[1]}, {lat_lon_str}'
-                    )
+                    print(f'{i:5}: {counter:4} pic id: {pic[0]}, {lat_lon_str}')
 
     @classmethod
     @DbUtils.connect
@@ -968,6 +961,42 @@ class PictureDb:
             )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
+
+    @classmethod
+    @DbUtils.connect
+    def get_ids_by_date(cls, date_select, cursor, ignore_check_rotate=True, check_rotate=False):
+        ''' get the ids of pictures where the file creation date is greater
+            than date_select
+            if check_rotate_done then do not return ids where rotation has been
+            checked, otherwise return all
+        '''
+        sql_str = (
+            f'SELECT p.id from {cls.table_pictures} as p '
+            f'JOIN {cls.table_files} as f on f.picture_id = p.id '
+            f'WHERE f.file_created > \'{date_select.strftime("%Y-%m-%d")}\' '
+        )
+
+        if not ignore_check_rotate:
+            if check_rotate:
+                sql_str += 'AND p.rotate_checked'
+
+            else:
+                sql_str += ' AND not p.rotate_checked'
+
+        cursor.execute(sql_str)
+        return [val[0] for val in cursor.fetchall()]
+
+    @classmethod
+    @DbUtils.connect
+    def set_rotate_check(cls, pic_ids, cursor, set_value=True):
+        ''' set rotate_check to True or False
+        '''
+        pic_ids = tuple(pic_ids)
+        sql_str = (
+            f'UPDATE {cls.table_pictures} set rotate_checked = {set_value} '
+            f'where id in {pic_ids} '
+        )
+        cursor.execute(sql_str)
 
     @classmethod
     @DbUtils.connect
