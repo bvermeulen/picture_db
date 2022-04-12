@@ -863,13 +863,14 @@ class PictureDb:
     def populate_locations_table(cls, cursor, json_filename=None, picture_ids=[]):
         if json_filename is not None:
             with open(json_filename) as json_file:
-                picture_ids = tuple(json.load(json_file))
+                picture_ids = tuple((*json.load(json_file), -1))
             sql_string_pictures = (
                 f'select id, gps_latitude, gps_longitude, gps_altitude '
                 f'from {cls.table_pictures} where id in {picture_ids}'
             )
         elif picture_ids:
-            picture_ids = tuple(picture_ids)
+            # ensure the tuple has always 2 values
+            picture_ids = tuple((*picture_ids, -1))
             sql_string_pictures = (
                 f'select id, gps_latitude, gps_longitude, gps_altitude '
                 f'from {cls.table_pictures} where id in {picture_ids}'
@@ -1009,7 +1010,7 @@ class PictureDb:
     def set_rotate_check(cls, pic_ids, cursor, set_value=True):
         ''' set rotate_check to True or False
         '''
-        pic_ids = tuple(pic_ids)
+        pic_ids = tuple((*pic_ids, -1))
         sql_str = (
             f'UPDATE {cls.table_pictures} set rotate_checked = {set_value} '
             f'where id in {pic_ids} '
