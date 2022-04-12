@@ -80,7 +80,11 @@ class Exif:
 
     @classmethod
     def get_exif_dict(cls, im):
-        return cls.exif_to_tag(piexif.load(im.info.get('exif')))
+        if im_info := im.info.get('exif'):
+            return cls.exif_to_tag(piexif.load(im_info))
+
+        else:
+            return {}
 
     @staticmethod
     def exif_to_json(exif_tag_dict):
@@ -186,6 +190,12 @@ class Exif:
     def format_date(date_str:str):
         if not isinstance(date_str, str):
             return None
+
+        try:
+            return datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S.%f')
+
+        except ValueError:
+            pass
 
         try:
             return datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')

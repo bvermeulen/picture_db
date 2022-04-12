@@ -258,7 +258,12 @@ class PictureDb:
         pic_meta = PicturesTable(*[None]*13)
         file_meta = FilesTable(*[None]*8)
 
-        if filename[-4:].lower() != '.jpg' and filename[-5:].lower() != '.heic':
+
+        valid_name = (
+            filename[-4:].lower() in ['.jpg', '.png'] or
+            filename[-5:].lower() in ['.heic', 'jpeg']
+        )
+        if not valid_name:
             return pic_meta, file_meta
 
         try:
@@ -309,6 +314,8 @@ class PictureDb:
 
         im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
         img_bytes = io.BytesIO()
+        if im.mode in ('RGBA', 'P'):
+            im = im.convert('RGB')
         im.save(img_bytes, format='JPEG')
         picture_bytes = img_bytes.getvalue()
 
@@ -398,7 +405,11 @@ class PictureDb:
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
 
-                if filename[-4:].lower() == '.jpg' or filename[-5:].lower() == '.heic':
+                valid_name = (
+                    filename[-4:].lower() in ['.jpg', '.png'] or
+                    filename[-4:].lower() in ['.jpeg', '.heic']
+                )
+                if valid_name:
                     sql_foldername = foldername.replace("'", "''")
                     sql_filename = filename.replace("'", "''")
 
@@ -570,17 +581,24 @@ class PictureDb:
                                   f'date_picture = \'{pic_meta.date_picture}\';')
                     cursor.execute(sql_string)
                     if cursor.fetchone():
-                        log_lines.append(f'{full_file_name} seems already in database: '
-                                         f'match date_picture {pic_meta.date_picture}')
+                        log_lines.append(
+                            f'{full_file_name} seems already in database: '
+                            f'match date_picture {pic_meta.date_picture}...'
+                        )
                         continue
 
                 else:
-                    sql_string = (f'SELECT id FROM {cls.table_files} WHERE '
-                                  f'file_modified = \'{file_meta.file_modified}\';')
+                    sql_string = (
+                        f'SELECT id FROM {cls.table_files} WHERE '
+                        f'file_modified = \'{file_meta.file_modified}\' AND '
+                        f'file_name = \'{file_meta.file_name}\';')
                     cursor.execute(sql_string)
                     if cursor.fetchone():
-                        log_lines.append(f'{full_file_name} seems already in database: '
-                                         f'match file modified {file_meta.file_modified}')
+                        log_lines.append(
+                            f'{full_file_name} seems already in database: '
+                            f'match file modified {file_meta.file_modified} and '
+                            f'{file_meta.file_name}...'
+                        )
                         continue
 
                 log_lines.append(f'{full_file_name} not found in database '

@@ -1,4 +1,5 @@
 import sys
+import json
 import io
 import datetime
 from pathlib import PureWindowsPath
@@ -17,6 +18,25 @@ clockwise_symbol = '\u21b7'
 right_arrow_symbol = '\u25B6'
 left_arrow_symbol = '\u25C0'
 exif = Exif()
+
+
+def read_json_pic_ids(argv):
+    if len(argv) < 2:
+        return []
+
+    try:
+        with open(argv[1], 'r') as jsonfile:
+            pic_ids = json.load(jsonfile)
+
+        if isinstance(pic_ids, list):
+            return pic_ids
+
+        else:
+            return []
+
+    except (FileNotFoundError, json.decoder.JSONDecodeError):
+        return []
+
 
 def pil2pixmap(pil_image):
     if pil_image is None:
@@ -45,8 +65,8 @@ def meta_to_text(pic_meta, file_meta, lat_lon_str, index=None, total=None):
         f'id: {pic_meta.id:6}\n'
         f'file name: {file_meta.file_name}\n'
         f'file path: {file_meta.file_path}\n'
+        f'file modified: {file_meta.file_modified.strftime("%d-%b-%Y %H:%M:%S")}\n'
         f'file created: {file_meta.file_created.strftime("%d-%b-%Y %H:%M:%S")}\n'
-        # f'file modified: {file_meta.file_modified.strftime("%d-%b-%Y %H:%M:%S")}\n'
         f'date picture: {_date_pic}\n'
         f'md5: {pic_meta.md5_signature}\n'
         f'camera make: {pic_meta.camera_make}\n'
@@ -79,17 +99,25 @@ class DateDialog(QDialog):
 
 class PictureShow(QWidget):
 
-    def __init__(self):
+    def __init__(self, pic_ids=None):
         super().__init__()
         self.picdb = PictureDb()
         self.rotate = None
         self.index = None
         self.total = None
         self.file_path = None
-        self.id_list = []
+        if pic_ids is None:
+            self.id_list = []
+
+        else:
+            self.id_list = pic_ids
+
         self.lat_lon_str = ''
         self.lat_lon_val = (None, None, None)
         self.initUI()
+        if self.id_list:
+            self.update_id_list()
+            self.show_picture()
 
     def initUI(self):
         vbox = QVBoxLayout()
@@ -104,8 +132,11 @@ class PictureShow(QWidget):
 
         box_form = QFormLayout()
         self.e_make = QLineEdit()
+        self.e_make.editingFinished.connect(self.update_attributes)
         self.e_model = QLineEdit()
+        self.e_model.editingFinished.connect(self.update_attributes)
         self.e_pic_date = QLineEdit()
+        self.e_pic_date.editingFinished.connect(self.update_attributes)
         self.e_lat_lon = QLineEdit()
         self.e_lat_lon.editingFinished.connect(self.update_attributes)
         box_form.addRow('Camera make', self.e_make)
@@ -131,19 +162,22 @@ class PictureShow(QWidget):
         clockwise_button.clicked.connect(self.rotate_clockwise)
         anticlockwise_button = QPushButton(anticlockwise_symbol)
         anticlockwise_button.clicked.connect(self.rotate_anticlockwise)
-        folderselect_button = QPushButton('Select folder')
-        folderselect_button.clicked.connect(self.cntr_folderselect)
-        dateselect_button = QPushButton('Select date')
-        dateselect_button.clicked.connect(self.cntr_dateselect)
-        confirm_rotations_button = QPushButton('Confirm rotations')
+        if not self.id_list:
+            folderselect_button = QPushButton('Select folder')
+            folderselect_button.clicked.connect(self.cntr_folderselect)
+            dateselect_button = QPushButton('Select date')
+            dateselect_button.clicked.connect(self.cntr_dateselect)
+
+        confirm_rotations_button = QPushButton('Confirm changes')
         confirm_rotations_button.clicked.connect(self.cntr_confirm_rotations)
-        reset_rotations_button = QPushButton('Reset rotations')
+        reset_rotations_button = QPushButton('Reset')
         reset_rotations_button.clicked.connect(self.cntr_reset_rotations)
 
         # hbox_buttons.addStretch()
         hbox_buttons.setAlignment(Qt.AlignLeft)
-        hbox_buttons.addWidget(folderselect_button)
-        hbox_buttons.addWidget(dateselect_button)
+        if not self.id_list:
+            hbox_buttons.addWidget(folderselect_button)
+            hbox_buttons.addWidget(dateselect_button)
         hbox_buttons.addWidget(anticlockwise_button)
         hbox_buttons.addWidget(clockwise_button)
         hbox_buttons.addWidget(prev_button)
@@ -174,7 +208,7 @@ class PictureShow(QWidget):
             return
 
         if self.pic_meta.date_picture is None:
-            date_ = self.file_meta.file_created
+            date_ = self.file_meta.file_modified
 
         else:
             date_ = self.pic_meta.date_picture
@@ -182,13 +216,16 @@ class PictureShow(QWidget):
         self.pic_lbl.setPixmap(pixmap)
         self.text = meta_to_text(
             self.pic_meta, self.file_meta, self.lat_lon_str,
-            index=self.index, total=self.total)
+            index=self.index, total=self.total
+        )
         self.text_lbl.setText(self.text)
         self.e_make.setText(self.pic_meta.camera_make)
         self.e_model.setText(self.pic_meta.camera_model)
         self.e_pic_date.setText(str(date_))
-        self.e_lat_lon.setText(', '.join([f'{v:0.5f}' for v in self.lat_lon_val
-                               if isinstance(v, (float, int))]))
+        self.e_lat_lon.setText(
+            ', '.join([f'{v:0.5f}' for v in self.lat_lon_val
+            if isinstance(v, (float, int))])
+        )
 
     def rotate_clockwise(self):
         # note degrees are defined in counter clockwise direction !
@@ -275,12 +312,9 @@ class PictureShow(QWidget):
         date_dialog = DateDialog()
         if date_dialog.exec_():
             self.id_list = self.picdb.get_ids_by_date(
-                date_dialog.date, ignore_check_rotate=True, check_rotate=False
+                date_dialog.date, ignore_check_rotate=False, check_rotate=False
             )
             self.update_id_list()
-
-    def cntr_quit(self):
-        self.close()
 
     def cntr_confirm_rotations(self):
         self.picdb.set_rotate_check(self.id_list, set_value=True)
@@ -290,6 +324,9 @@ class PictureShow(QWidget):
         self.picdb.set_rotate_check(self.id_list, set_value=False)
 
     def update_attributes(self):
+        if self.index is None:
+            return
+
         self.pic_meta.camera_make = self.e_make.text()
         self.pic_meta.camera_model = self.e_model.text()
         self.pic_meta.date_picture = exif.format_date(self.e_pic_date.text())
@@ -298,10 +335,13 @@ class PictureShow(QWidget):
             self.pic_meta.gps_altitude, self.pic_meta.gps_img_direction
         ) = exif.decimalgps_to_json(self.e_lat_lon.text())
 
+    def cntr_quit(self):
+        self.close()
+
 
 def main():
     app = QApplication([])
-    _ = PictureShow()
+    _ = PictureShow(pic_ids=read_json_pic_ids(sys.argv))
     sys.exit(app.exec_())
 
 
