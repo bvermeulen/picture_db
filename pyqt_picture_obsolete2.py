@@ -6,12 +6,12 @@ from pathlib import PureWindowsPath
 from PIL import Image
 from PyQt5.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QFormLayout, QLabel, QApplication, QPushButton,
-    QComboBox, QShortcut, QLineEdit, QCalendarWidget, QDialog
+    QFileDialog, QShortcut, QLineEdit, QCalendarWidget, QDialog
 )
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QImage, QPixmap
 from picture_exif import Exif
-from picture_db import PictureDb, DbFilter
+from picture_db import PictureDb
 
 anticlockwise_symbol = '\u21b6'
 clockwise_symbol = '\u21b7'
@@ -96,22 +96,6 @@ class DateDialog(QDialog):
     def date(self):
         return self.date_widget.selectedDate().toPyDate()
 
-
-class FolderDialog(QDialog):
-    def __init__(self, folders):
-        super().__init__()
-        self.setWindowTitle('Select folder ...')
-        self.setGeometry(500, 400, 620, 250)
-        self.folder_widget = QComboBox(self)
-        self.folder_widget.addItems(['Select folder'] + folders)
-        self.folder_widget.currentIndexChanged.connect(self.selected)
-
-    def selected(self):
-        self.accept()
-
-    @property
-    def folder(self):
-        return self.folder_widget.currentText()
 
 class PictureShow(QWidget):
 
@@ -318,13 +302,12 @@ class PictureShow(QWidget):
             self.cntr_select_pic(-1)
 
     def cntr_folderselect(self):
-        folder_dialog = FolderDialog(self.picdb.get_file_paths())
-        if folder_dialog.exec_():
-            folder = str(
-                PureWindowsPath(folder_dialog.folder)
-            ).lower().replace('\\', '\\\\')
-            self.id_list = self.picdb.get_folder_ids(folder, db_filter=DbFilter.NOGPS)
-            self.update_id_list()
+        self.file_path = QFileDialog.getExistingDirectory(self, 'Select Folder')
+        self.file_path = str(
+            PureWindowsPath(self.file_path)).lower().replace('\\', '\\\\')
+        print(self.file_path)
+        self.id_list = self.picdb.get_folder_ids(self.file_path, db_filter='nogps')
+        self.update_id_list()
 
     def cntr_dateselect(self):
         date_dialog = DateDialog()

@@ -1,3 +1,4 @@
+from enum import Enum
 from dataclasses import dataclass
 import shutil
 import datetime
@@ -32,6 +33,13 @@ elif os.name == 'posix':
 
 else:
     assert False, f'operating system: {os.name} is not implemented'
+
+
+class DbFilter(Enum):
+    NOGPS = 1
+    CHECKED = 2
+    NOT_CHECKED = 3
+    ALL = 4
 
 
 @dataclass
@@ -243,7 +251,6 @@ class PictureDb:
             f'CREATE TABLE {cls.table_locations} ('
             f'id SERIAL PRIMARY KEY, '
             f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE UNIQUE, '
-            f'date_picture TIMESTAMP NOT NULL, '
             f'latitude DOUBLE PRECISION NOT NULL, '
             f'longitude DOUBLE PRECISION NOT NULL, '
             f'altitude REAL NOT NULL, '
@@ -257,7 +264,6 @@ class PictureDb:
     def get_pic_meta(cls, filename):
         pic_meta = PicturesTable(*[None]*13)
         file_meta = FilesTable(*[None]*8)
-
 
         valid_name = (
             filename[-4:].lower() in ['.jpg', '.png'] or
@@ -471,7 +477,8 @@ class PictureDb:
             from the database
         '''
         sql_string = (
-            f'SELECT picture_id FROM {cls.table_files} WHERE NOT file_checked;')
+            f'SELECT picture_id FROM {cls.table_files} WHERE NOT file_checked;'
+        )
         cursor.execute(sql_string)
         deleted_ids = [id[0] for id in cursor.fetchall()]
         cls.delete_ids(deleted_ids)
@@ -549,8 +556,8 @@ class PictureDb:
              not moves picture from source folder to the destination folder
         '''
         progress_message = progress_message_generator(
-            f'merging pictures from {source_folder}')
-
+            f'merging pictures from {source_folder}'
+        )
         log_file = os.path.join(source_folder, '_select_pictures_to_merge.log')
         with open(log_file, 'at') as f:
             c_time = datetime.datetime.now()
@@ -615,8 +622,10 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def review_required(cls, accepted_review_date, picture_id, cursor):
-        sql_string = (f'SELECT review_date FROM {cls.table_reviews} '
-                      f'WHERE picture_id={picture_id};')
+        sql_string = (
+            f'SELECT review_date FROM {cls.table_reviews} '
+            f'WHERE picture_id={picture_id};'
+        )
         cursor.execute(sql_string)
         latest_review_date = datetime.datetime(1800, 1, 1)
         for review_date in cursor.fetchall():
@@ -632,20 +641,24 @@ class PictureDb:
     @DbUtils.connect
     def delete_ids(cls, deleted_ids, cursor):
         if deleted_ids:
-            sql_string = (f'DELETE FROM {cls.table_pictures} '
-                          f'WHERE id=any(array{deleted_ids});')
+            sql_string = (
+                f'DELETE FROM {cls.table_pictures} WHERE id=any(array{deleted_ids});'
+            )
             cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
     def update_reviews(cls, pic_selection, reviewer_name, cursor):
         for pic in pic_selection:
-            sql_string = (f'INSERT INTO {cls.table_reviews} ('
-                          f'picture_id, reviewer_name, review_date) '
-                          f'VALUES (%s, %s, %s);')
+            sql_string = (
+                f'INSERT INTO {cls.table_reviews} ('
+                f'picture_id, reviewer_name, review_date) '
+                f'VALUES (%s, %s, %s);'
+            )
             cursor.execute(
-                sql_string, (pic.get('id'), reviewer_name,
-                             datetime.datetime.now()))
+                sql_string, (
+                    pic.get('id'), reviewer_name, datetime.datetime.now())
+                )
 
     @classmethod
     @DbUtils.connect
@@ -860,20 +873,20 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def populate_locations_table(cls, cursor, json_filename=None, picture_ids=[]):
+    def populate_locations_table(cls, cursor, json_filename=None, picture_ids=None):
         if json_filename is not None:
             with open(json_filename) as json_file:
-                picture_ids = tuple((*json.load(json_file), -1))
+                # ensure the tuple has always 2 values
+                picture_ids = json.load(json_file)
+
             sql_string_pictures = (
                 f'select id, gps_latitude, gps_longitude, gps_altitude '
-                f'from {cls.table_pictures} where id in {picture_ids}'
+                f'from {cls.table_pictures} where id=any(array{picture_ids})'
             )
         elif picture_ids:
-            # ensure the tuple has always 2 values
-            picture_ids = tuple((*picture_ids, -1))
             sql_string_pictures = (
                 f'select id, gps_latitude, gps_longitude, gps_altitude '
-                f'from {cls.table_pictures} where id in {picture_ids}'
+                f'from {cls.table_pictures} where id=any(array{picture_ids})'
             )
         else:
             sql_string_pictures = (
@@ -959,24 +972,42 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def get_folder_ids(cls, folder, cursor, db_filter=None):
+    def get_folder_ids(cls, folder, cursor, db_filter=DbFilter.ALL):
         ''' get the ids of pictures where folder matches.
             It only returns ids where the rotation checked is False
         '''
-        if db_filter == 'nogps':
+        if db_filter == DbFilter.NOGPS:
             sql_str = (
                 f'SELECT p.id from {cls.table_pictures} as p '
                 f'JOIN {cls.table_files} as f on f.picture_id = p.id '
                 f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
-                f'length(p.gps_latitude::text) < 3 AND '
+                f'length(p.gps_latitude::text) < 3'
+            )
+        elif db_filter == DbFilter.CHECKED:
+            sql_str = (
+                f'SELECT p.id from {cls.table_pictures} as p '
+                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
+                f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
+                f' p.rotate_checked'
+            )
+        elif db_filter == DbFilter.NOT_CHECKED:
+            sql_str = (
+                f'SELECT p.id from {cls.table_pictures} as p '
+                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
+                f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
                 f'not p.rotate_checked'
+            )
+        elif db_filter == DbFilter.ALL:
+            sql_str = (
+                f'SELECT p.id from {cls.table_pictures} as p '
+                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
+                f'WHERE lower(f.file_path) LIKE \'%{folder}%\''
             )
         else:
             sql_str = (
                 f'SELECT p.id from {cls.table_pictures} as p '
                 f'JOIN {cls.table_files} as f on f.picture_id = p.id '
-                f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
-                f'not p.rotate_checked'
+                f'WHERE lower(f.file_path) LIKE \'%{folder}%\''
             )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
@@ -994,13 +1025,12 @@ class PictureDb:
             f'JOIN {cls.table_files} as f on f.picture_id = p.id '
             f'WHERE f.file_created > \'{date_select.strftime("%Y-%m-%d")}\' '
         )
-
         if not ignore_check_rotate:
             if check_rotate:
                 sql_str += 'AND p.rotate_checked'
 
             else:
-                sql_str += ' AND not p.rotate_checked'
+                sql_str += 'AND not p.rotate_checked'
 
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
@@ -1010,12 +1040,22 @@ class PictureDb:
     def set_rotate_check(cls, pic_ids, cursor, set_value=True):
         ''' set rotate_check to True or False
         '''
-        pic_ids = tuple((*pic_ids, -1))
         sql_str = (
             f'UPDATE {cls.table_pictures} set rotate_checked = {set_value} '
-            f'where id in {pic_ids} '
+            f'where id=any(array{pic_ids}) '
         )
         cursor.execute(sql_str)
+
+    @classmethod
+    @DbUtils.connect
+    def get_file_paths(cls, cursor):
+        ''' get a list of file_paths
+        '''
+        sql_str = (
+            f'SELECT DISTINCT file_path from {cls.table_files} ORDER BY file_path;'
+        )
+        cursor.execute(sql_str)
+        return [val[0] for val in cursor.fetchall()]
 
     @classmethod
     @DbUtils.connect
