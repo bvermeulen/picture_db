@@ -972,49 +972,21 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
-    def get_folder_ids(cls, folder, cursor, db_filter=DbFilter.ALL):
+    def get_ids_by_folder(cls, folder, cursor):
         ''' get the ids of pictures where folder matches.
-            It only returns ids where the rotation checked is False
         '''
-        if db_filter == DbFilter.NOGPS:
-            sql_str = (
-                f'SELECT p.id from {cls.table_pictures} as p '
-                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
-                f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
-                f'length(p.gps_latitude::text) < 3'
-            )
-        elif db_filter == DbFilter.CHECKED:
-            sql_str = (
-                f'SELECT p.id from {cls.table_pictures} as p '
-                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
-                f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
-                f' p.rotate_checked'
-            )
-        elif db_filter == DbFilter.NOT_CHECKED:
-            sql_str = (
-                f'SELECT p.id from {cls.table_pictures} as p '
-                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
-                f'WHERE lower(f.file_path) LIKE \'%{folder}%\' AND '
-                f'not p.rotate_checked'
-            )
-        elif db_filter == DbFilter.ALL:
-            sql_str = (
-                f'SELECT p.id from {cls.table_pictures} as p '
-                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
-                f'WHERE lower(f.file_path) LIKE \'%{folder}%\''
-            )
-        else:
-            sql_str = (
-                f'SELECT p.id from {cls.table_pictures} as p '
-                f'JOIN {cls.table_files} as f on f.picture_id = p.id '
-                f'WHERE lower(f.file_path) LIKE \'%{folder}%\''
-            )
+        folder = folder.replace('\'', '\'\'')
+        sql_str = (
+            f'SELECT p.id from {cls.table_pictures} as p '
+            f'JOIN {cls.table_files} as f on f.picture_id = p.id '
+            f'WHERE lower(f.file_path) LIKE \'%{folder}%\''
+        )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
 
     @classmethod
     @DbUtils.connect
-    def get_ids_by_date(cls, date_select, cursor, ignore_check_rotate=True, check_rotate=False):
+    def get_ids_by_date(cls, date_select, cursor):
         ''' get the ids of pictures where the file creation date is greater
             than date_select
             if check_rotate_done then do not return ids where rotation has been
@@ -1025,13 +997,34 @@ class PictureDb:
             f'JOIN {cls.table_files} as f on f.picture_id = p.id '
             f'WHERE f.file_created > \'{date_select.strftime("%Y-%m-%d")}\' '
         )
-        if not ignore_check_rotate:
-            if check_rotate:
-                sql_str += 'AND p.rotate_checked'
+        cursor.execute(sql_str)
+        return [val[0] for val in cursor.fetchall()]
 
-            else:
-                sql_str += 'AND not p.rotate_checked'
-
+    @classmethod
+    @DbUtils.connect
+    def filter_ids(cls, ids, cursor, db_filter=DbFilter.ALL):
+        ''' filter ids on value of db_filter.
+        '''
+        if db_filter == DbFilter.NOGPS:
+            sql_str = (
+                f'SELECT id from {cls.table_pictures} '
+                f'WHERE id=any(array{ids}) AND length(gps_latitude::text) < 3'
+            )
+        elif db_filter == DbFilter.CHECKED:
+            sql_str = (
+                f'SELECT id from {cls.table_pictures} '
+                f'WHERE id=any(array{ids}) AND rotate_checked'
+            )
+        elif db_filter == DbFilter.NOT_CHECKED:
+            sql_str = (
+                f'SELECT id from {cls.table_pictures} '
+                f'WHERE id=any(array{ids}) AND not rotate_checked'
+            )
+        else:
+            sql_str = (
+                f'SELECT id from {cls.table_pictures} '
+                f'WHERE id=any(array{ids})'
+            )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
 

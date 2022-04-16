@@ -1,7 +1,21 @@
+'''
+    This script interactively displays pictures from the picture_db database by typing:
+    >>>python pyqt_picture.py [db_filter] [json_file]
+    >>>
+    whereby db_filter and json_file are optional. json_file is a json file containing a
+    list of picture ids, like [100, 101, 102]
+    db_filter can have the values:
+        ALL, no filter applied
+        NOGPS, pictures that have no coordinates
+        CHECKED, pictures where rotate flag is set true
+        NOT_CHECKED, pictures where rotate flag is false
+    The default filter is ALL.
+    Interactively pictures can be selected by the folder a pictures was originally stored
+    or by the creation date.
+'''
 import sys
 import json
 import io
-import datetime
 from pathlib import PureWindowsPath
 from PIL import Image
 from PyQt5.QtWidgets import (
@@ -20,22 +34,55 @@ left_arrow_symbol = '\u25C0'
 exif = Exif()
 
 
-def read_json_pic_ids(argv):
-    if len(argv) < 2:
-        return []
+def parse_argv(argv):
+    ''' arguments: [DbFilter] [json file with list]
+        no argument or more then 2 arguments return:
+            (default_db_filter, [])
+        one argument returns:
+            (default_db_filter, []), (db_filter, []) or (default_db_filter, [n1..nn])
+        two arguments return:
+            (defaukt_db_filter, []), (db_filter, [n1..nn]), (db_filter, []) or (default_db_filter, [n1..nn])
+    '''
+    default_db_filter = DbFilter.ALL
+    default = (default_db_filter, [])
 
-    try:
-        with open(argv[1], 'r') as jsonfile:
-            pic_ids = json.load(jsonfile)
+    if not argv or len(argv) < 2:
+        return default
 
-        if isinstance(pic_ids, list):
-            return pic_ids
+    elif len(argv) == 2:
+        try:
+            with open(argv[1], 'r') as jsonfile:
+                ids = json.load(jsonfile)
 
-        else:
-            return []
+            if isinstance(ids, list):
+                return (default_db_filter, ids)
 
-    except (FileNotFoundError, json.decoder.JSONDecodeError):
-        return []
+        except (FileNotFoundError, json.decoder.JSONDecodeError):
+            try:
+                return (DbFilter[argv[1].upper()], [])
+
+            except KeyError:
+                return default
+
+    elif len(argv) == 3:
+        try:
+            with open(argv[2], 'r') as jsonfile:
+                ids = json.load(jsonfile)
+
+            if not isinstance(ids, list):
+                raise ValueError
+
+        except (ValueError, FileNotFoundError, json.decoder.JSONDecodeError):
+            ids = []
+
+        try:
+            return (DbFilter[argv[1].upper()], ids)
+
+        except KeyError:
+            return (default_db_filter, ids)
+
+    else:
+        return default
 
 
 def pil2pixmap(pil_image):
@@ -115,31 +162,25 @@ class FolderDialog(QDialog):
 
 class PictureShow(QWidget):
 
-    def __init__(self, pic_ids=None):
+    def __init__(self, argv):
         super().__init__()
+        self.db_filter, self.id_list = parse_argv(argv)
         self.picdb = PictureDb()
         self.rotate = None
         self.index = None
         self.total = None
         self.file_path = None
-        if pic_ids is None:
-            self.id_list = []
-
-        else:
-            self.id_list = pic_ids
-
         self.lat_lon_str = ''
         self.lat_lon_val = (None, None, None)
         self.initUI()
         if self.id_list:
+            self.id_list = self.picdb.filter_ids(self.id_list, db_filter=self.db_filter)
             self.update_id_list()
             self.show_picture()
 
     def initUI(self):
         vbox = QVBoxLayout()
-
         hbox_pic_action = QHBoxLayout()
-
         self.pic_lbl = QLabel()
 
         vbox_text_action = QVBoxLayout()
@@ -178,11 +219,10 @@ class PictureShow(QWidget):
         clockwise_button.clicked.connect(self.rotate_clockwise)
         anticlockwise_button = QPushButton(anticlockwise_symbol)
         anticlockwise_button.clicked.connect(self.rotate_anticlockwise)
-        if not self.id_list:
-            folderselect_button = QPushButton('Select folder')
-            folderselect_button.clicked.connect(self.cntr_folderselect)
-            dateselect_button = QPushButton('Select date')
-            dateselect_button.clicked.connect(self.cntr_dateselect)
+        folderselect_button = QPushButton('Select folder')
+        folderselect_button.clicked.connect(self.cntr_folderselect)
+        dateselect_button = QPushButton('Select date')
+        dateselect_button.clicked.connect(self.cntr_dateselect)
 
         confirm_rotations_button = QPushButton('Confirm changes')
         confirm_rotations_button.clicked.connect(self.cntr_confirm_rotations)
@@ -191,9 +231,8 @@ class PictureShow(QWidget):
 
         # hbox_buttons.addStretch()
         hbox_buttons.setAlignment(Qt.AlignLeft)
-        if not self.id_list:
-            hbox_buttons.addWidget(folderselect_button)
-            hbox_buttons.addWidget(dateselect_button)
+        hbox_buttons.addWidget(folderselect_button)
+        hbox_buttons.addWidget(dateselect_button)
         hbox_buttons.addWidget(anticlockwise_button)
         hbox_buttons.addWidget(clockwise_button)
         hbox_buttons.addWidget(prev_button)
@@ -323,15 +362,15 @@ class PictureShow(QWidget):
             folder = str(
                 PureWindowsPath(folder_dialog.folder)
             ).lower().replace('\\', '\\\\')
-            self.id_list = self.picdb.get_folder_ids(folder, db_filter=DbFilter.NOGPS)
+            id_list = self.picdb.get_ids_by_folder(folder)
+            self.id_list = self.picdb.filter_ids(id_list, db_filter=self.db_filter)
             self.update_id_list()
 
     def cntr_dateselect(self):
         date_dialog = DateDialog()
         if date_dialog.exec_():
-            self.id_list = self.picdb.get_ids_by_date(
-                date_dialog.date, ignore_check_rotate=False, check_rotate=False
-            )
+            id_list = self.picdb.get_ids_by_date(date_dialog.date)
+            self.id_list = self.picdb.filter_ids(id_list, db_filter=self.db_filter)
             self.update_id_list()
 
     def cntr_confirm_rotations(self):
@@ -359,7 +398,7 @@ class PictureShow(QWidget):
 
 def main():
     app = QApplication([])
-    _ = PictureShow(pic_ids=read_json_pic_ids(sys.argv))
+    _ = PictureShow(sys.argv)
     sys.exit(app.exec_())
 
 
