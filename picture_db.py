@@ -1,5 +1,4 @@
 from enum import Enum
-from dataclasses import dataclass
 import shutil
 import datetime
 import hashlib
@@ -10,29 +9,14 @@ from functools import wraps
 import numpy as np
 from shapely.geometry import Point
 import psycopg2
-from PIL import Image, ImageShow
-from pillow_heif import register_heif_opener
 from decouple import config
 import psutil
-from picture_exif import Exif
+from picture_exif import Exif, PicturesTable, FilesTable
 from Utils.plogger import Logger
 
 logformat = '%(asctime)s:%(levelname)s:%(message)s'
 Logger.set_logger('.\\picture.log', logformat, 'INFO')
 logger = Logger.getlogger()
-
-register_heif_opener()
-
-if os.name == 'nt':
-    ImageShow.WindowsViewer.format = 'PNG'
-    display_process = 'Microsoft.Photos.exe'
-
-elif os.name == 'posix':
-    ImageShow.UnixViewer = 'PNG'
-    display_process = 'eog'
-
-else:
-    assert False, f'operating system: {os.name} is not implemented'
 
 
 class DbFilter(Enum):
@@ -41,40 +25,9 @@ class DbFilter(Enum):
     NOT_CHECKED = 3
     ALL = 4
 
-
-@dataclass
-class PicturesTable:
-    id: int
-    date_picture: datetime.datetime
-    md5_signature: str
-    camera_make: str
-    camera_model: str
-    gps_latitude: dict
-    gps_longitude: dict
-    gps_altitude: dict
-    gps_img_direction: dict
-    thumbnail: str
-    exif: dict
-    rotate: int
-    rotate_checked: bool
-
-
-@dataclass
-class FilesTable:
-    id: int
-    picture_id: int
-    file_path: str
-    file_name: str
-    file_modified: datetime.datetime
-    file_created: datetime.datetime
-    file_size: int
-    file_checked: bool
-
-
 EPSG_WGS84 = 4326
 # note: the MD5 signature is based on the thumbnail made with the
 # size below. So changing the size will make check on signature invalid
-DATABASE_PICTURE_SIZE = (600, 600)
 exif = Exif()
 
 
@@ -171,7 +124,7 @@ class DbUtils:
         ''' remove thumbnail picture by killing the display process
         '''
         for proc in psutil.process_iter():
-            if proc.name() == display_process:
+            if proc.name() == exif.get_display_process():
                 proc.kill()
 
 
@@ -259,79 +212,6 @@ class PictureDb:
         )
         print(f'create table {cls.table_locations}')
         cursor.execute(sql_string)
-
-    @classmethod
-    def get_pic_meta(cls, filename):
-        pic_meta = PicturesTable(*[None]*13)
-        file_meta = FilesTable(*[None]*8)
-
-        valid_name = (
-            filename[-4:].lower() in ['.jpg', '.png'] or
-            filename[-5:].lower() in ['.heic', 'jpeg']
-        )
-        if not valid_name:
-            return pic_meta, file_meta
-
-        try:
-            im = Image.open(filename)
-
-        except OSError:
-            return pic_meta, file_meta
-
-        # file attributes
-        file_stat = os.stat(filename)
-        file_meta.file_name = os.path.basename(filename)
-        file_meta.file_path = os.path.abspath(filename).replace(file_meta.file_name, '')
-        file_meta.file_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
-        file_meta.file_created = datetime.datetime.fromtimestamp(file_stat.st_ctime)
-        file_meta.file_size = file_stat.st_size
-
-        # exif attributes
-        exif_dict = exif.get_exif_dict(im)
-
-        if exif_dict:
-            pic_meta.camera_make = exif_dict.get('0th').get('Make')
-            if pic_meta.camera_make:
-                pic_meta.camera_make = pic_meta.camera_make.\
-                    replace('\x00', '')
-
-            pic_meta.camera_model = exif_dict.get('0th').get('Model')
-            if pic_meta.camera_model:
-                pic_meta.camera_model = pic_meta.camera_model.\
-                    replace('\x00', '')
-
-            try:
-                pic_meta.date_picture = datetime.datetime.strptime(exif_dict.get('0th').\
-                    get('DateTime'), '%Y:%m:%d %H:%M:%S')
-
-            except (TypeError, ValueError):
-                pic_meta.date_picture = None
-
-            (
-                pic_meta.gps_latitude, pic_meta.gps_longitude,
-                pic_meta.gps_altitude, pic_meta.gps_img_direction
-            ) = exif.exifgps_to_json(exif_dict.get('GPS'))
-
-        else:
-            pic_meta.camera_make, pic_meta.camera_model, \
-                pic_meta.date_picture = None, None, None
-            pic_meta.gps_latitude, pic_meta.gps_longitude, \
-                pic_meta.gps_altitude, pic_meta.gps_img_direction = [json.dumps({})]*4
-
-        im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
-        img_bytes = io.BytesIO()
-        if im.mode in ('RGBA', 'P'):
-            im = im.convert('RGB')
-        im.save(img_bytes, format='JPEG')
-        picture_bytes = img_bytes.getvalue()
-
-        pic_meta.thumbnail = json.dumps(picture_bytes.decode(exif.codec))
-        pic_meta.md5_signature = hashlib.md5(picture_bytes).hexdigest()
-        pic_meta.exif = exif.exif_to_json(exif_dict)
-        pic_meta.rotate = 0
-        pic_meta.rotate_checked = False
-
-        return pic_meta, file_meta
 
     @classmethod
     @DbUtils.connect
@@ -542,7 +422,7 @@ class PictureDb:
         if pic_meta.thumbnail:
             img_bytes = io.BytesIO(
                 pic_meta.thumbnail.encode(exif.codec))
-            im = Image.open(img_bytes)
+            im = exif.get_pil_image(img_bytes)
 
         lat_lon_str, lat_lon_val = exif.convert_gps(
             pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude)
@@ -731,14 +611,16 @@ class PictureDb:
 
                 print(f'[{pic.get("index")}] '
                       f'[{os.path.join(pic.get("file_path"), pic.get("file_name"))}]')
-                image_array = np.array(Image.open(pic.get('thumbnail')))
+                if not (im := exif.get_pil_image(pic.get('thumbnail'))):
+                    continue
 
+                image_array = np.array(im)
                 height = min(image_array.shape[0], height)
                 width = min(image_array.shape[1], width)
                 array_padded[:height, :width, :] = image_array[:height, :width, :]
                 pic_arrays.append(array_padded)
 
-            Image.fromarray(np.hstack(pic_arrays)).show()
+            exif.show_image_array(np.hstack(pic_arrays))
 
             # -1 skip removal, 0 quit method, 1..n pictures index to be removed
             # in case of skip, update the reviews table
@@ -1076,13 +958,9 @@ class PictureDb:
                         f'not found in database')
                     continue
 
-                try:
-                    im = Image.open(os.path.join(foldername, filename))
-                    im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
-
-                except Exception as e:  #pylint: disable=broad-except
-                    logger.info(
-                        f'error found: {e} for file {os.path.join(foldername, filename)}')
+                fn = os.path.join(foldername, filename)
+                if not (im := exif.get_pil_image(fn)):
+                    logger.info(f'unable to get pil_image for file {fn}')
                     continue
 
                 cls.update_image(picture_id, im, 0)
@@ -1093,10 +971,7 @@ class PictureDb:
     def update_image_md5(cls, picture_id, image, rotate, cursor):
         '''  This method replaces the thumbnail and md5.
         '''
-        img_bytes = io.BytesIO()
-        image.save(img_bytes, format='JPEG')
-        picture_bytes = img_bytes.getvalue()
-
+        picture_bytes = exif.get_image_bytes(image)
         thumbnail = json.dumps(picture_bytes.decode(exif.codec))
         md5_signature = hashlib.md5(picture_bytes).hexdigest()
 
@@ -1136,14 +1011,8 @@ class PictureDb:
                 )
                 continue
 
-            try:
-                im = Image.open(filename_abs)
-                im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
-
-            except Exception as e:  #pylint: disable=broad-except
-                logger.info(
-                    f'error found: {e} for file {filename_abs}'
-                )
+            if not (im := exif.get_pil_image(filename_abs)):
+                logger.info(f'unable to get pil_image for file {filename_abs}')
                 continue
 
             cls.update_image_md5(picture_id, im, 0)

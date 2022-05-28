@@ -1,6 +1,44 @@
+import os
+import io
+import hashlib
+from dataclasses import dataclass
 import datetime
 import json
+from PIL import Image, ImageShow
+from pillow_heif import register_heif_opener
 import piexif
+
+register_heif_opener()
+DATABASE_PICTURE_SIZE = (600, 600)
+
+
+@dataclass
+class PicturesTable:
+    id: int
+    date_picture: datetime.datetime
+    md5_signature: str
+    camera_make: str
+    camera_model: str
+    gps_latitude: dict
+    gps_longitude: dict
+    gps_altitude: dict
+    gps_img_direction: dict
+    thumbnail: str
+    exif: dict
+    rotate: int
+    rotate_checked: bool
+
+
+@dataclass
+class FilesTable:
+    id: int
+    picture_id: int
+    file_path: str
+    file_name: str
+    file_modified: datetime.datetime
+    file_created: datetime.datetime
+    file_size: int
+    file_checked: bool
 
 
 class Exif:
@@ -85,6 +123,79 @@ class Exif:
 
         else:
             return {}
+
+    @classmethod
+    def get_pic_meta(cls, filename):
+        pic_meta = PicturesTable(*[None]*13)
+        file_meta = FilesTable(*[None]*8)
+
+        valid_name = (
+            filename[-4:].lower() in ['.jpg', '.png'] or
+            filename[-5:].lower() in ['.heic', 'jpeg']
+        )
+        if not valid_name:
+            return pic_meta, file_meta
+
+        try:
+            im = Image.open(filename)
+
+        except OSError:
+            return pic_meta, file_meta
+
+        # file attributes
+        file_stat = os.stat(filename)
+        file_meta.file_name = os.path.basename(filename)
+        file_meta.file_path = os.path.abspath(filename).replace(file_meta.file_name, '')
+        file_meta.file_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
+        file_meta.file_created = datetime.datetime.fromtimestamp(file_stat.st_ctime)
+        file_meta.file_size = file_stat.st_size
+
+        # exif attributes
+        exif_dict = cls.get_exif_dict(im)
+
+        if exif_dict:
+            pic_meta.camera_make = exif_dict.get('0th').get('Make')
+            if pic_meta.camera_make:
+                pic_meta.camera_make = pic_meta.camera_make.\
+                    replace('\x00', '')
+
+            pic_meta.camera_model = exif_dict.get('0th').get('Model')
+            if pic_meta.camera_model:
+                pic_meta.camera_model = pic_meta.camera_model.\
+                    replace('\x00', '')
+
+            try:
+                pic_meta.date_picture = datetime.datetime.strptime(exif_dict.get('0th').\
+                    get('DateTime'), '%Y:%m:%d %H:%M:%S')
+
+            except (TypeError, ValueError):
+                pic_meta.date_picture = None
+
+            (
+                pic_meta.gps_latitude, pic_meta.gps_longitude,
+                pic_meta.gps_altitude, pic_meta.gps_img_direction
+            ) = cls.exifgps_to_json(exif_dict.get('GPS'))
+
+        else:
+            pic_meta.camera_make, pic_meta.camera_model, \
+                pic_meta.date_picture = None, None, None
+            pic_meta.gps_latitude, pic_meta.gps_longitude, \
+                pic_meta.gps_altitude, pic_meta.gps_img_direction = [json.dumps({})]*4
+
+        im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
+        img_bytes = io.BytesIO()
+        if im.mode in ('RGBA', 'P'):
+            im = im.convert('RGB')
+        im.save(img_bytes, format='JPEG')
+        picture_bytes = img_bytes.getvalue()
+
+        pic_meta.thumbnail = json.dumps(picture_bytes.decode(cls.codec))
+        pic_meta.md5_signature = hashlib.md5(picture_bytes).hexdigest()
+        pic_meta.exif = cls.exif_to_json(exif_dict)
+        pic_meta.rotate = 0
+        pic_meta.rotate_checked = False
+
+        return pic_meta, file_meta
 
     @staticmethod
     def exif_to_json(exif_tag_dict):
@@ -230,3 +341,39 @@ class Exif:
             pic_meta.gps_img_direction = json.dumps(pic_meta.gps_img_direction)
 
         return pic_meta
+
+    @staticmethod
+    def get_pil_image(file_name):
+        try:
+            im = Image.open(file_name)
+            im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
+
+        except Exception as e:  #pylint: disable=broad-except
+            im = None
+
+        return im
+
+    @staticmethod
+    def get_display_process():
+        if os.name == 'nt':
+            ImageShow.WindowsViewer.format = 'PNG'
+            display_process = 'Microsoft.Photos.exe'
+
+        elif os.name == 'posix':
+            ImageShow.UnixViewer = 'PNG'
+            display_process = 'eog'
+
+        else:
+            assert False, f'operating system: {os.name} is not implemented'
+
+        return display_process
+
+    @staticmethod
+    def show_image_array(image_array):
+        Image.fromarray(image_array).show()
+
+    @staticmethod
+    def get_image_bytes(image):
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format='JPEG')
+        return img_bytes.getvalue()
