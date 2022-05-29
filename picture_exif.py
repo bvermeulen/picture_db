@@ -183,12 +183,7 @@ class Exif:
                 pic_meta.gps_altitude, pic_meta.gps_img_direction = [json.dumps({})]*4
 
         im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
-        img_bytes = io.BytesIO()
-        if im.mode in ('RGBA', 'P'):
-            im = im.convert('RGB')
-        im.save(img_bytes, format='JPEG')
-        picture_bytes = img_bytes.getvalue()
-
+        picture_bytes = cls.get_image_bytes(im)
         pic_meta.thumbnail = json.dumps(picture_bytes.decode(cls.codec))
         pic_meta.md5_signature = hashlib.md5(picture_bytes).hexdigest()
         pic_meta.exif = cls.exif_to_json(exif_dict)
@@ -375,5 +370,8 @@ class Exif:
     @staticmethod
     def get_image_bytes(image):
         img_bytes = io.BytesIO()
+        if image.mode in ('RGBA', 'P'):
+            image = image.convert('RGB')
+
         image.save(img_bytes, format='JPEG')
         return img_bytes.getvalue()
