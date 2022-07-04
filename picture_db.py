@@ -235,7 +235,7 @@ class PictureDb:
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
-                pic_meta, file_meta = cls.get_pic_meta(
+                pic_meta, file_meta = exif.get_pic_meta(
                     os.path.join(foldername, filename))
                 if not file_meta.file_name:
                     continue
@@ -293,7 +293,7 @@ class PictureDb:
 
                 valid_name = (
                     filename[-4:].lower() in ['.jpg', '.png'] or
-                    filename[-4:].lower() in ['.jpeg', '.heic']
+                    filename[-5:].lower() in ['.jpeg', '.heic']
                 )
                 if valid_name:
                     sql_foldername = foldername.replace("'", "''")
@@ -311,7 +311,7 @@ class PictureDb:
 
                     # file exists but not in DB -> add to DB
                     if not picture_id:
-                        pic_meta, file_meta = cls.get_pic_meta(
+                        pic_meta, file_meta = exif.get_pic_meta(
                             os.path.join(foldername, filename))
                         if not file_meta.file_name:
                             continue
@@ -447,7 +447,7 @@ class PictureDb:
         for foldername, _, filenames in os.walk(source_folder):
             for filename in filenames:
                 full_file_name = os.path.join(foldername, filename)
-                pic_meta, file_meta = cls.get_pic_meta(full_file_name)
+                pic_meta, file_meta = exif.get_pic_meta(full_file_name)
                 if not file_meta.file_name:
                     continue
 
