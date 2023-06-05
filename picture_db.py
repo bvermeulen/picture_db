@@ -943,8 +943,9 @@ class PictureDb:
             f'SELECT DISTINCT lower(file_path) fp from {cls.table_files} ORDER BY fp'
         )
         cursor.execute(sql_str)
-
-        return  [re.search(r'^.+pictures\\+?(.*\\)$', val[0]).group(1) for val in cursor.fetchall()]
+        return  [
+            re.sub(r'^pictures\\', '', re.sub(r'^.:\\pictures\\', '', val[0])) for val in cursor.fetchall()
+        ]
 
     @classmethod
     @DbUtils.connect
