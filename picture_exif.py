@@ -117,12 +117,16 @@ class Exif:
             return None, (None, None, None)
 
     @classmethod
-    def get_exif_dict(cls, im):
-        if im_info := im.info.get('exif'):
-            return cls.exif_to_tag(piexif.load(im_info))
+    def get_exif_dict(cls, im, file):
 
-        else:
-            return {}
+        if im_info := im.info.get('exif'):
+            try:
+                return cls.exif_to_tag(piexif.load(im_info))
+
+            except Exception as e:
+                print(f'file: {file}, exception: {e}')
+
+        return {}
 
     @classmethod
     def get_pic_meta(cls, filename):
@@ -151,7 +155,7 @@ class Exif:
         file_meta.file_size = file_stat.st_size
 
         # exif attributes
-        exif_dict = cls.get_exif_dict(im)
+        exif_dict = cls.get_exif_dict(im, filename)
 
         if exif_dict:
             pic_meta.camera_make = exif_dict.get('0th').get('Make')
@@ -182,7 +186,12 @@ class Exif:
             pic_meta.gps_latitude, pic_meta.gps_longitude, \
                 pic_meta.gps_altitude, pic_meta.gps_img_direction = [json.dumps({})]*4
 
-        im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
+        try:
+            im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
+
+        except OSError as e:
+            print(f'file {filename}, exception: {e}')
+
         picture_bytes = cls.get_image_bytes(im)
         pic_meta.thumbnail = json.dumps(picture_bytes.decode(cls.codec))
         pic_meta.md5_signature = hashlib.md5(picture_bytes).hexdigest()
@@ -344,6 +353,7 @@ class Exif:
             im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
 
         except Exception as e:  #pylint: disable=broad-except
+            print(f'file {file_name}, exception: {e}')
             im = None
 
         return im
@@ -370,6 +380,7 @@ class Exif:
     @staticmethod
     def get_image_bytes(image):
         img_bytes = io.BytesIO()
+
         if image.mode in ('RGBA', 'P'):
             image = image.convert('RGB')
 
