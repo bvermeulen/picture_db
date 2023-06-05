@@ -2,7 +2,7 @@ from picture_db import PictureDb
 import pyqt_picture
 
 picdb = PictureDb()
-BASE_FOLDER = 'd:\\pictures'
+BASE_FOLDER = 'd:\\pictures\pictures'
 # BASE_FOLDER = 'd:\\test_pictures'
 
 def run_delete_tables():
@@ -24,8 +24,8 @@ def run_fill_pic_base():
 
 
 def run_merge_pictures():
-    source_folder = 'd:\\Pics_google'
-    destination_folder = 'd:\\Pics_unsorted'
+    source_folder = 'd:\\pictures\Pics_google'
+    destination_folder = 'd:\\pictures\Pics_unsorted'
     picdb.select_pics_for_merge(source_folder, destination_folder)
 
 
@@ -41,7 +41,7 @@ def run_remove_pics(method='md5', start_id=None, end_id=None):
     ''' removed pics by id if either start_id or end_id are give otherwise
         runs delete picture on check on method
     '''
-    deleted_folder = 'd:\\Pics_deleted'
+    deleted_folder = 'd:\\pictures\Pics_deleted'
     if end_id:
         picdb.remove_pics_by_id(deleted_folder, start_id, end_id=end_id)
 
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     # run_fill_pic_base()
     # run_remove_pics(method='md5')  # method='md4' or 'date'
     # run_replace_picture()
-    run_merge_pictures()
-    # run_update_picbase()
+    # run_merge_pictures()
+    run_update_picbase()
     # run_pic_gis('') # 'id_with_location_013.json')
     # run_update_rotate_checked('ids.json')

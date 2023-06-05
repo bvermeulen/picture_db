@@ -296,11 +296,12 @@ class PictureDb:
                     filename[-5:].lower() in ['.jpeg', '.heic']
                 )
                 if valid_name:
-                    sql_foldername = foldername.replace("'", "''")
                     sql_filename = filename.replace("'", "''")
+                    sql_parent_folder = os.path.basename(os.path.dirname('/'.join([foldername, sql_filename])))
+                    sql_parent_folder = sql_parent_folder.replace("'", "''")
 
                     sql_string = (f'SELECT picture_id FROM {cls.table_files} WHERE '
-                                  f'file_path=\'{sql_foldername}\\\' AND '
+                                  f'file_path like \'%{sql_parent_folder}%\' AND '
                                   f'file_name=\'{sql_filename}\';')
                     cursor.execute(sql_string)
                     try:
