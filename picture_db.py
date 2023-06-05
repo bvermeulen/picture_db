@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from functools import wraps
 import numpy as np
 from shapely.geometry import Point
@@ -789,6 +790,17 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
+    def remove_from_locations_table(cls, cursor, picture_ids=None):
+        if not picture_ids:
+            return
+
+        sql_remove_locations = (
+            f'delete from {cls.table_locations} where picture_id=any(array{picture_ids})'
+        )
+        cursor.execute(sql_remove_locations)
+
+    @classmethod
+    @DbUtils.connect
     def update_rotate_checked(cls, json_filename, cursor):
         with open(json_filename) as json_file:
             picture_ids = json.load(json_file)
@@ -928,10 +940,11 @@ class PictureDb:
         ''' get a list of file_paths
         '''
         sql_str = (
-            f'SELECT DISTINCT file_path from {cls.table_files} ORDER BY file_path;'
+            f'SELECT DISTINCT lower(file_path) fp from {cls.table_files} ORDER BY fp'
         )
         cursor.execute(sql_str)
-        return [val[0] for val in cursor.fetchall()]
+
+        return  [re.search(r'^.+pictures\\+?(.*\\)$', val[0]).group(1) for val in cursor.fetchall()]
 
     @classmethod
     @DbUtils.connect

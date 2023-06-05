@@ -225,9 +225,9 @@ class PictureShow(QWidget):
         dateselect_button.clicked.connect(self.cntr_dateselect)
 
         confirm_rotations_button = QPushButton('Confirm changes')
-        confirm_rotations_button.clicked.connect(self.cntr_confirm_rotations)
+        confirm_rotations_button.clicked.connect(self.cntr_confirm_changes)
         reset_rotations_button = QPushButton('Reset')
-        reset_rotations_button.clicked.connect(self.cntr_reset_rotations)
+        reset_rotations_button.clicked.connect(self.cntr_reset_changes)
 
         # hbox_buttons.addStretch()
         hbox_buttons.setAlignment(Qt.AlignLeft)
@@ -373,12 +373,13 @@ class PictureShow(QWidget):
             self.id_list = self.picdb.filter_ids(id_list, db_filter=self.db_filter)
             self.update_id_list()
 
-    def cntr_confirm_rotations(self):
+    def cntr_confirm_changes(self):
         self.picdb.set_rotate_check(self.id_list, set_value=True)
         self.picdb.populate_locations_table(picture_ids=self.id_list)
 
-    def cntr_reset_rotations(self):
+    def cntr_reset_changes(self):
         self.picdb.set_rotate_check(self.id_list, set_value=False)
+        self.picdb.remove_from_locations_table(picture_ids=self.id_list)
 
     def update_attributes(self):
         if self.index is None:
