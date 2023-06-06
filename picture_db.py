@@ -27,8 +27,6 @@ class DbFilter(Enum):
     ALL = 4
 
 EPSG_WGS84 = 4326
-# note: the MD5 signature is based on the thumbnail made with the
-# size below. So changing the size will make check on signature invalid
 exif = Exif()
 
 
@@ -867,6 +865,20 @@ class PictureDb:
 
     @classmethod
     @DbUtils.connect
+    def get_file_paths(cls, cursor):
+        ''' get a sorted list of unique file_paths with base folder removed
+        '''
+        pattern = r'^[a-zA-Z]:\\(?:pictures\\){1,2}(.*)\\$'
+        sql_str = (
+            f'SELECT DISTINCT lower(file_path) fp from {cls.table_files} ORDER BY fp'
+        )
+        cursor.execute(sql_str)
+        return  sorted(list(
+            set(re.search(pattern, val[0]).group(1) for val in cursor.fetchall())
+        ))
+
+    @classmethod
+    @DbUtils.connect
     def get_ids_by_folder(cls, folder, cursor):
         ''' get the ids of pictures where folder matches.
         '''
@@ -933,19 +945,6 @@ class PictureDb:
             f'where id=any(array{pic_ids}) '
         )
         cursor.execute(sql_str)
-
-    @classmethod
-    @DbUtils.connect
-    def get_file_paths(cls, cursor):
-        ''' get a list of file_paths
-        '''
-        sql_str = (
-            f'SELECT DISTINCT lower(file_path) fp from {cls.table_files} ORDER BY fp'
-        )
-        cursor.execute(sql_str)
-        return  [
-            re.sub(r'^pictures\\', '', re.sub(r'^.:\\pictures\\', '', val[0])) for val in cursor.fetchall()
-        ]
 
     @classmethod
     @DbUtils.connect

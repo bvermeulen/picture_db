@@ -9,6 +9,8 @@ from pillow_heif import register_heif_opener
 import piexif
 
 register_heif_opener()
+# note: the MD5 signature is based on the thumbnail made with the
+# size below. So changing the size will make check on signature invalid
 DATABASE_PICTURE_SIZE = (600, 600)
 
 
