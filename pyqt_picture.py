@@ -31,6 +31,9 @@ anticlockwise_symbol = '\u21b6'
 clockwise_symbol = '\u21b7'
 right_arrow_symbol = '\u25B6'
 left_arrow_symbol = '\u25C0'
+dialogue_rel_position = (10, 285)
+date_widget_size = (400, 250)
+folder_widget_size = (520, 192)
 exif = Exif()
 
 
@@ -129,11 +132,16 @@ def meta_to_text(pic_meta, file_meta, lat_lon_str, index=None, total=None):
     return text
 
 class DateDialog(QDialog):
-    def __init__(self):
+    def __init__(self, parent):
         super().__init__()
         self.setWindowTitle('Select date ...')
+        self.setGeometry(
+            parent.pos().x() + dialogue_rel_position[0] + 70,
+            parent.pos().y() + dialogue_rel_position[1],
+            date_widget_size[0] + 10, date_widget_size[1] + 10
+        )
         self.date_widget = QCalendarWidget(self)
-        self.date_widget.setGeometry(50, 10, 400, 250)
+        self.date_widget.setGeometry(5, 5, date_widget_size[0], date_widget_size[1])
         self.date_widget.clicked[QDate].connect(self.clicked)
 
     def clicked(self):
@@ -145,11 +153,16 @@ class DateDialog(QDialog):
 
 
 class FolderDialog(QDialog):
-    def __init__(self, folders):
+    def __init__(self, folders, parent):
         super().__init__()
         self.setWindowTitle('Select folder ...')
-        self.setGeometry(500, 400, 620, 250)
+        self.setGeometry(
+            parent.pos().x() + dialogue_rel_position[0],
+            parent.pos().y() + dialogue_rel_position[1],
+            folder_widget_size[0] + 10, folder_widget_size[1] + 10
+        )
         self.folder_widget = QComboBox(self)
+        self.folder_widget.setGeometry(5, 5, folder_widget_size[0], 20)
         self.folder_widget.addItems(['Select folder'] + folders)
         self.folder_widget.currentIndexChanged.connect(self.selected)
 
@@ -285,7 +298,7 @@ class PictureShow(QWidget):
     def rotate_clockwise(self):
         # note degrees are defined in counter clockwise direction !
         if self.image:
-            self.image = self.image.rotate(-90, expand=True, resample=Image.BICUBIC)
+            self.image = self.image.rotate(-90, expand=True, resample=Image.Resampling.BICUBIC)
             self.rotate += 90
             self.rotate = self.rotate % 360
             self.pic_meta.rotate = self.rotate
@@ -294,7 +307,7 @@ class PictureShow(QWidget):
     def rotate_anticlockwise(self):
         # note degrees are defined in counter clockwise direction !
         if self.image:
-            self.image = self.image.rotate(+90, expand=True, resample=Image.BICUBIC)
+            self.image = self.image.rotate(+90, expand=True, resample=Image.Resampling.BICUBIC)
             self.rotate -= 90
             self.rotate = self.rotate % 360
             self.pic_meta.rotate = self.rotate
@@ -357,7 +370,7 @@ class PictureShow(QWidget):
             self.cntr_select_pic(-1)
 
     def cntr_folderselect(self):
-        folder_dialog = FolderDialog(self.picdb.get_file_paths())
+        folder_dialog = FolderDialog(self.picdb.get_file_paths(), self)
         if folder_dialog.exec_():
             folder = str(
                 PureWindowsPath(folder_dialog.folder)
@@ -367,7 +380,7 @@ class PictureShow(QWidget):
             self.update_id_list()
 
     def cntr_dateselect(self):
-        date_dialog = DateDialog()
+        date_dialog = DateDialog(self)
         if date_dialog.exec_():
             id_list = self.picdb.get_ids_by_date(date_dialog.date)
             self.id_list = self.picdb.filter_ids(id_list, db_filter=self.db_filter)

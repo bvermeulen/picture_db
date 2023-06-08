@@ -912,26 +912,27 @@ class PictureDb:
     def filter_ids(cls, ids, cursor, db_filter=DbFilter.ALL):
         ''' filter ids on value of db_filter.
         '''
-        if db_filter == DbFilter.NOGPS:
-            sql_str = (
-                f'SELECT id from {cls.table_pictures} '
-                f'WHERE id=any(array{ids}) AND length(gps_latitude::text) < 3'
-            )
-        elif db_filter == DbFilter.CHECKED:
-            sql_str = (
-                f'SELECT id from {cls.table_pictures} '
-                f'WHERE id=any(array{ids}) AND rotate_checked'
-            )
-        elif db_filter == DbFilter.NOT_CHECKED:
-            sql_str = (
-                f'SELECT id from {cls.table_pictures} '
-                f'WHERE id=any(array{ids}) AND not rotate_checked'
-            )
-        else:
-            sql_str = (
-                f'SELECT id from {cls.table_pictures} '
-                f'WHERE id=any(array{ids})'
-            )
+        match db_filter:
+            case DbFilter.NOGPS:
+                sql_str = (
+                    f'SELECT id from {cls.table_pictures} '
+                    f'WHERE id=any(array{ids}) AND length(gps_latitude::text) < 3'
+                )
+            case DbFilter.CHECKED:
+                sql_str = (
+                    f'SELECT id from {cls.table_pictures} '
+                    f'WHERE id=any(array{ids}) AND rotate_checked'
+                )
+            case DbFilter.NOT_CHECKED:
+                sql_str = (
+                    f'SELECT id from {cls.table_pictures} '
+                    f'WHERE id=any(array{ids}) AND not rotate_checked'
+                )
+            case other:
+                sql_str = (
+                    f'SELECT id from {cls.table_pictures} '
+                    f'WHERE id=any(array{ids})'
+                )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
 
