@@ -886,7 +886,7 @@ class PictureDb:
         sql_str = (
             f'SELECT p.id from {cls.table_pictures} as p '
             f'JOIN {cls.table_files} as f on f.picture_id = p.id '
-            f'WHERE lower(f.file_path) LIKE \'%{folder}%\''
+            f"WHERE lower(f.file_path) LIKE '%{folder}\\\\\'"
         )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
