@@ -15,8 +15,8 @@ import psutil
 from picture_exif import Exif, PicturesTable, FilesTable
 from Utils.plogger import Logger
 
-logformat = '%(asctime)s:%(levelname)s:%(message)s'
-Logger.set_logger('.\\picture.log', logformat, 'INFO')
+logformat = "%(asctime)s:%(levelname)s:%(message)s"
+Logger.set_logger(".\\picture.log", logformat, "INFO")
 logger = Logger.getlogger()
 
 
@@ -26,48 +26,49 @@ class DbFilter(Enum):
     NOT_CHECKED = 3
     ALL = 4
 
+
 EPSG_WGS84 = 4326
 exif = Exif()
 
 
 def progress_message_generator(message):
-    loop_dash = ['\u2014', '\\', '|', '/']
+    loop_dash = ["\u2014", "\\", "|", "/"]
     i = 1
     print_interval = 1
     while True:
-        print(
-            f'\r{loop_dash[int(i/print_interval) % 4]} {i} {message}', end='')
+        print(f"\r{loop_dash[int(i/print_interval) % 4]} {i} {message}", end="")
         i += 1
         yield
 
 
 class DbUtils:
-    '''  utility methods for database
-    '''
-    host = config('DB_HOST')
-    db_user = config('DB_USERNAME')
-    db_user_pw = config('DB_PASSWORD')
-    database = config('DATABASE')
+    """utility methods for database"""
+
+    host = config("DB_HOST")
+    db_user = config("DB_USERNAME")
+    db_user_pw = config("DB_PASSWORD")
+    database = config("DATABASE")
 
     @classmethod
     def connect(cls, func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            connect_string = f'host=\'{cls.host}\' dbname=\'{cls.database}\''\
-                             f'user=\'{cls.db_user}\' password=\'{cls.db_user_pw}\''
+            connect_string = (
+                f"host='{cls.host}' dbname='{cls.database}'"
+                f"user='{cls.db_user}' password='{cls.db_user_pw}'"
+            )
             result = None
             try:
                 # add ggsencmode='disable' to resolve unsupported frontend protocol
                 # 1234.5679: server supports 2.0 to 3.0
                 # should be fixed on postgresql 12.3
-                connection = psycopg2.connect(connect_string, gssencmode='disable')
+                connection = psycopg2.connect(connect_string, gssencmode="disable")
                 cursor = connection.cursor()
                 result = func(*args, cursor, **kwargs)
                 connection.commit()
 
             except psycopg2.Error as error:
-                print(f'error while connect to PostgreSQL {cls.database}: '
-                      f'{error}')
+                print(f"error while connect to PostgreSQL {cls.database}: " f"{error}")
 
             finally:
                 if connection:
@@ -80,28 +81,30 @@ class DbUtils:
 
     @staticmethod
     def get_answer(choices):
-        ''' arguments:
-            choices: list of picture numbers to be able to delete
+        """arguments:
+        choices: list of picture numbers to be able to delete
 
-            returns a list, either:
-            [1, 2, ..., n] : choices of pictures to delete
-            [0]  : exit function
-            [-1] : skip item
-        '''
+        returns a list, either:
+        [1, 2, ..., n] : choices of pictures to delete
+        [0]  : exit function
+        [-1] : skip item
+        """
         answer_delete = []
-        while (not (any(val in [-1, 0] for val in answer_delete) and
-                    len(answer_delete) == 1) and
-               (not any(val in choices for val in answer_delete))):
+        while not (
+            any(val in [-1, 0] for val in answer_delete) and len(answer_delete) == 1
+        ) and (not any(val in choices for val in answer_delete)):
 
-            _answer = input('Delete picture numbers [separated by spaces] '
-                            '(press 0 to quit, space to skip): ')
+            _answer = input(
+                "Delete picture numbers [separated by spaces] "
+                "(press 0 to quit, space to skip): "
+            )
 
-            if _answer == ' ':
-                _answer = '-1'
+            if _answer == " ":
+                _answer = "-1"
 
-            answer_delete = _answer.replace(',', ' ').split()
+            answer_delete = _answer.replace(",", " ").split()
             try:
-                answer_delete = [int(val) for val in _answer.replace(',', ' ').split()]
+                answer_delete = [int(val) for val in _answer.replace(",", " ").split()]
 
             except ValueError:
                 pass
@@ -112,7 +115,7 @@ class DbUtils:
     def get_name():
         valid = False
         while not valid:
-            name = input('Please give your name: ')
+            name = input("Please give your name: ")
             if 5 < len(name) < 20:
                 valid = True
 
@@ -120,147 +123,166 @@ class DbUtils:
 
     @staticmethod
     def remove_display():
-        ''' remove thumbnail picture by killing the display process
-        '''
+        """remove thumbnail picture by killing the display process"""
         for proc in psutil.process_iter():
             if proc.name() == exif.get_display_process():
                 proc.kill()
 
 
 class PictureDb:
-    table_pictures = 'pictures'
-    table_files = 'files'
-    table_reviews = 'reviews'
-    table_locations = 'locations'
-
+    table_pictures = "pictures"
+    table_files = "files"
+    table_reviews = "reviews"
+    table_locations = "locations"
 
     @classmethod
     @DbUtils.connect
     def delete_table(cls, table_name: str, cursor):
-        sql_string = f'DROP TABLE {table_name};'
+        sql_string = f"DROP TABLE {table_name};"
         cursor.execute(sql_string)
-        print(f'delete table {table_name}')
+        print(f"delete table {table_name}")
 
     @classmethod
     @DbUtils.connect
     def create_pictures_table(cls, cursor):
         sql_string = (
-            f'CREATE TABLE {cls.table_pictures} ('
-            f'id SERIAL PRIMARY KEY, '
-            f'date_picture TIMESTAMP, '
-            f'md5_signature VARCHAR(32), '
-            f'camera_make VARCHAR(50), '
-            f'camera_model VARCHAR(50), '
-            f'gps_latitude JSON, '
-            f'gps_longitude JSON, '
-            f'gps_altitude JSON, '
-            f'gps_img_dir JSON, '
-            f'thumbnail JSON, '
-            f'exif JSON, '
-            f'rotate INTEGER DEFAULT 0, '
-            f'rotate_checked BOOLEAN DEFAULT FALSE'
-            f');'
+            f"CREATE TABLE {cls.table_pictures} ("
+            f"id SERIAL PRIMARY KEY, "
+            f"date_picture TIMESTAMP, "
+            f"md5_signature VARCHAR(32), "
+            f"camera_make VARCHAR(50), "
+            f"camera_model VARCHAR(50), "
+            f"gps_latitude JSON, "
+            f"gps_longitude JSON, "
+            f"gps_altitude JSON, "
+            f"gps_img_dir JSON, "
+            f"thumbnail JSON, "
+            f"exif JSON, "
+            f"rotate INTEGER DEFAULT 0, "
+            f"rotate_checked BOOLEAN DEFAULT FALSE"
+            f");"
         )
-        print(f'create table {cls.table_pictures}')
+        print(f"create table {cls.table_pictures}")
         cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
     def create_files_table(cls, cursor):
         sql_string = (
-            f'CREATE TABLE {cls.table_files} ('
-            f'id SERIAL PRIMARY KEY, '
-            f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE UNIQUE NOT NULL, '
-            f'file_path VARCHAR(250), '
-            f'file_name VARCHAR(250), '
-            f'file_modified TIMESTAMP, '
-            f'file_created TIMESTAMP, '
-            f'file_size INTEGER, '
-            f'file_checked BOOLEAN'
-            f');'
+            f"CREATE TABLE {cls.table_files} ("
+            f"id SERIAL PRIMARY KEY, "
+            f"picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE UNIQUE NOT NULL, "
+            f"file_path VARCHAR(250), "
+            f"file_name VARCHAR(250), "
+            f"file_modified TIMESTAMP, "
+            f"file_created TIMESTAMP, "
+            f"file_size INTEGER, "
+            f"file_checked BOOLEAN"
+            f");"
         )
-        print(f'create table {cls.table_files}')
+        print(f"create table {cls.table_files}")
         cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
     def create_reviews_table(cls, cursor):
         sql_string = (
-            f'CREATE TABLE {cls.table_reviews} ('
-            f'id SERIAL PRIMARY KEY, '
-            f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE NOT NULL, '
-            f'reviewer_name VARCHAR(20), '
-            f'review_date TIMESTAMP'
-            f');'
+            f"CREATE TABLE {cls.table_reviews} ("
+            f"id SERIAL PRIMARY KEY, "
+            f"picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE NOT NULL, "
+            f"reviewer_name VARCHAR(20), "
+            f"review_date TIMESTAMP"
+            f");"
         )
-        print(f'create table {cls.table_reviews}')
+        print(f"create table {cls.table_reviews}")
         cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
     def create_locations_table(cls, cursor):
         sql_string = (
-            f'CREATE TABLE {cls.table_locations} ('
-            f'id SERIAL PRIMARY KEY, '
-            f'picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE UNIQUE, '
-            f'latitude DOUBLE PRECISION NOT NULL, '
-            f'longitude DOUBLE PRECISION NOT NULL, '
-            f'altitude REAL NOT NULL, '
-            f'geom geometry(Point, {EPSG_WGS84})'
-            f');'
+            f"CREATE TABLE {cls.table_locations} ("
+            f"id SERIAL PRIMARY KEY, "
+            f"picture_id INTEGER REFERENCES {cls.table_pictures}(id) ON DELETE CASCADE UNIQUE, "
+            f"latitude DOUBLE PRECISION NOT NULL, "
+            f"longitude DOUBLE PRECISION NOT NULL, "
+            f"altitude REAL NOT NULL, "
+            f"geom geometry(Point, {EPSG_WGS84})"
+            f");"
         )
-        print(f'create table {cls.table_locations}')
+        print(f"create table {cls.table_locations}")
         cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
     def store_pictures_base_folder(cls, base_folder, cursor):
-        ''' re-initialises the database all previous data will be lost
-        '''
+        """re-initialises the database all previous data will be lost"""
         progress_message = progress_message_generator(
-            f'loading picture meta data from {base_folder}')
+            f"loading picture meta data from {base_folder}"
+        )
 
-        sql_pictures = (f'INSERT INTO {cls.table_pictures} ('
-                        f'date_picture, md5_signature, camera_make, camera_model, '
-                        f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                        f'thumbnail, exif, rotate, rotate_checked) '
-                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
-                        f'RETURNING id;')
+        sql_pictures = (
+            f"INSERT INTO {cls.table_pictures} ("
+            f"date_picture, md5_signature, camera_make, camera_model, "
+            f"gps_latitude, gps_longitude, gps_altitude, gps_img_dir, "
+            f"thumbnail, exif, rotate, rotate_checked) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            f"RETURNING id;"
+        )
 
-        sql_files = (f'INSERT INTO {cls.table_files} ('
-                     f'picture_id, file_path, file_name, file_modified, file_created, '
-                     f'file_size, file_checked)'
-                     f'VALUES (%s, %s, %s, %s, %s, %s, %s);')
+        sql_files = (
+            f"INSERT INTO {cls.table_files} ("
+            f"picture_id, file_path, file_name, file_modified, file_created, "
+            f"file_size, file_checked)"
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s);"
+        )
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
                 pic_meta, file_meta = exif.get_pic_meta(
-                    os.path.join(foldername, filename))
+                    os.path.join(foldername, filename)
+                )
                 if not file_meta.file_name:
                     continue
 
-                cursor.execute(sql_pictures, (
-                    pic_meta.date_picture, pic_meta.md5_signature,
-                    pic_meta.camera_make, pic_meta.camera_model,
-                    pic_meta.gps_latitude, pic_meta.gps_longitude,
-                    pic_meta.gps_altitude, pic_meta.gps_img_direction,
-                    pic_meta.thumbnail, pic_meta.exif,
-                    pic_meta.rotate, pic_meta.rotate_checked
-                ))
+                cursor.execute(
+                    sql_pictures,
+                    (
+                        pic_meta.date_picture,
+                        pic_meta.md5_signature,
+                        pic_meta.camera_make,
+                        pic_meta.camera_model,
+                        pic_meta.gps_latitude,
+                        pic_meta.gps_longitude,
+                        pic_meta.gps_altitude,
+                        pic_meta.gps_img_direction,
+                        pic_meta.thumbnail,
+                        pic_meta.exif,
+                        pic_meta.rotate,
+                        pic_meta.rotate_checked,
+                    ),
+                )
                 picture_id = cursor.fetchone()[0]
 
-                cursor.execute(sql_files, (
-                    picture_id, file_meta.file_path, file_meta.file_name,
-                    file_meta.file_modified, file_meta.file_created,
-                    file_meta.file_size, True
-                ))
+                cursor.execute(
+                    sql_files,
+                    (
+                        picture_id,
+                        file_meta.file_path,
+                        file_meta.file_name,
+                        file_meta.file_modified,
+                        file_meta.file_created,
+                        file_meta.file_size,
+                        True,
+                    ),
+                )
                 lat_lon_str, lat_lon_val = exif.convert_gps(
-                    pic_meta.gps_latitude, pic_meta.gps_longitude,
-                    pic_meta.gps_altitude
+                    pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude
                 )
                 if lat_lon_str:
                     cls.add_to_locations_table(
-                        picture_id, pic_meta.date_picture, lat_lon_val)
+                        picture_id, pic_meta.date_picture, lat_lon_val
+                    )
 
                 next(progress_message)
         print()
@@ -268,40 +290,47 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def check_and_add_files(cls, base_folder, cursor):
-        ''' check if files are in database, if they are not then add
-        '''
+        """check if files are in database, if they are not then add"""
         progress_message = progress_message_generator(
-            f'update picture meta data from {base_folder}')
-        sql_string = (f'UPDATE {cls.table_files} SET file_checked = FALSE;')
+            f"update picture meta data from {base_folder}"
+        )
+        sql_string = f"UPDATE {cls.table_files} SET file_checked = FALSE;"
         cursor.execute(sql_string)
 
-        sql_pictures = (f'INSERT INTO {cls.table_pictures} ('
-                        f'date_picture, md5_signature, camera_make, camera_model, '
-                        f'gps_latitude, gps_longitude, gps_altitude, gps_img_dir, '
-                        f'thumbnail, exif, rotate, rotate_checked) '
-                        f'VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) '
-                        f'RETURNING id;')
+        sql_pictures = (
+            f"INSERT INTO {cls.table_pictures} ("
+            f"date_picture, md5_signature, camera_make, camera_model, "
+            f"gps_latitude, gps_longitude, gps_altitude, gps_img_dir, "
+            f"thumbnail, exif, rotate, rotate_checked) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+            f"RETURNING id;"
+        )
 
-        sql_files = (f'INSERT INTO {cls.table_files} ('
-                     f'picture_id, file_path, file_name, file_modified, file_created, '
-                     f'file_size, file_checked) '
-                     f'VALUES (%s, %s, %s, %s, %s, %s, %s);')
+        sql_files = (
+            f"INSERT INTO {cls.table_files} ("
+            f"picture_id, file_path, file_name, file_modified, file_created, "
+            f"file_size, file_checked) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s);"
+        )
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
 
-                valid_name = (
-                    filename[-4:].lower() in ['.jpg', '.png'] or
-                    filename[-5:].lower() in ['.jpeg', '.heic']
-                )
+                valid_name = filename[-4:].lower() in [".jpg", ".png"] or filename[
+                    -5:
+                ].lower() in [".jpeg", ".heic"]
                 if valid_name:
                     sql_filename = filename.replace("'", "''")
-                    sql_parent_folder = os.path.basename(os.path.dirname('/'.join([foldername, sql_filename])))
+                    sql_parent_folder = os.path.basename(
+                        os.path.dirname("/".join([foldername, sql_filename]))
+                    )
                     sql_parent_folder = sql_parent_folder.replace("'", "''")
 
-                    sql_string = (f'SELECT picture_id FROM {cls.table_files} WHERE '
-                                  f'file_path like \'%{sql_parent_folder}%\' AND '
-                                  f'file_name=\'{sql_filename}\';')
+                    sql_string = (
+                        f"SELECT picture_id FROM {cls.table_files} WHERE "
+                        f"file_path like '%{sql_parent_folder}%' AND "
+                        f"file_name='{sql_filename}';"
+                    )
                     cursor.execute(sql_string)
                     try:
                         picture_id = cursor.fetchone()[0]
@@ -312,38 +341,60 @@ class PictureDb:
                     # file exists but not in DB -> add to DB
                     if not picture_id:
                         pic_meta, file_meta = exif.get_pic_meta(
-                            os.path.join(foldername, filename))
+                            os.path.join(foldername, filename)
+                        )
                         if not file_meta.file_name:
                             continue
 
-                        cursor.execute(sql_pictures, (
-                            pic_meta.date_picture, pic_meta.md5_signature,
-                            pic_meta.camera_make, pic_meta.camera_model,
-                            pic_meta.gps_latitude, pic_meta.gps_longitude,
-                            pic_meta.gps_altitude, pic_meta.gps_img_direction,
-                            pic_meta.thumbnail, pic_meta.exif,
-                            pic_meta.rotate, pic_meta.rotate_checked
-                        ))
+                        cursor.execute(
+                            sql_pictures,
+                            (
+                                pic_meta.date_picture,
+                                pic_meta.md5_signature,
+                                pic_meta.camera_make,
+                                pic_meta.camera_model,
+                                pic_meta.gps_latitude,
+                                pic_meta.gps_longitude,
+                                pic_meta.gps_altitude,
+                                pic_meta.gps_img_direction,
+                                pic_meta.thumbnail,
+                                pic_meta.exif,
+                                pic_meta.rotate,
+                                pic_meta.rotate_checked,
+                            ),
+                        )
 
                         picture_id = cursor.fetchone()[0]
 
-                        cursor.execute(sql_files, (
-                            picture_id, file_meta.file_path, file_meta.file_name,
-                            file_meta.file_modified, file_meta.file_created,
-                            file_meta.file_size, True
-                        ))
+                        cursor.execute(
+                            sql_files,
+                            (
+                                picture_id,
+                                file_meta.file_path,
+                                file_meta.file_name,
+                                file_meta.file_modified,
+                                file_meta.file_created,
+                                file_meta.file_size,
+                                True,
+                            ),
+                        )
 
                         lat_lon_str, lat_lon_val = exif.convert_gps(
-                            pic_meta.gps_latitude, pic_meta.gps_longitude,
-                            pic_meta.gps_altitude)
+                            pic_meta.gps_latitude,
+                            pic_meta.gps_longitude,
+                            pic_meta.gps_altitude,
+                        )
                         if lat_lon_str:
                             cls.add_to_locations_table(
-                                picture_id, pic_meta.date_picture, lat_lon_val)
+                                picture_id, pic_meta.date_picture, lat_lon_val
+                            )
 
                     else:
-                        sql_string = (f'UPDATE {cls.table_files} '
-                                      f'SET file_checked = TRUE '
-                                      f'WHERE picture_id={picture_id};')
+                        sql_string = (
+                            f"UPDATE {cls.table_files} "
+                            f"SET file_checked = TRUE "
+                            f"WHERE picture_id={picture_id};"
+                        )
                         cursor.execute(sql_string)
 
                     next(progress_message)
@@ -353,12 +404,10 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def check_and_remove_non_existing_files(cls, cursor):
-        ''' check if files are in the database, but not on file, in that case remove
-            from the database
-        '''
-        sql_string = (
-            f'SELECT picture_id FROM {cls.table_files} WHERE NOT file_checked;'
-        )
+        """check if files are in the database, but not on file, in that case remove
+        from the database
+        """
+        sql_string = f"SELECT picture_id FROM {cls.table_files} WHERE NOT file_checked;"
         cursor.execute(sql_string)
         deleted_ids = [id[0] for id in cursor.fetchall()]
         cls.delete_ids(deleted_ids)
@@ -366,16 +415,16 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def load_picture_meta(cls, _id: int, cursor):
-        ''' load picture meta data from the database
-            :arguments:
-                _id: picture id number in database: integer
-            :returns:
-                im: PIL image
-                pic_meta: PicturesTable
-                file_meta: FilesTable
-                lat_lon_str: string
-        '''
-        sql_string = f'SELECT * FROM {cls.table_pictures} WHERE id={_id};'
+        """load picture meta data from the database
+        :arguments:
+            _id: picture id number in database: integer
+        :returns:
+            im: PIL image
+            pic_meta: PicturesTable
+            file_meta: FilesTable
+            lat_lon_str: string
+        """
+        sql_string = f"SELECT * FROM {cls.table_pictures} WHERE id={_id};"
         cursor.execute(sql_string)
         data_from_table_pictures = cursor.fetchone()
 
@@ -383,7 +432,7 @@ class PictureDb:
             return None, None, None, None, (None, None, None)
 
         else:
-            sql_string = f'SELECT * FROM {cls.table_files} WHERE picture_id={_id};'
+            sql_string = f"SELECT * FROM {cls.table_files} WHERE picture_id={_id};"
             cursor.execute(sql_string)
             data_from_table_files = cursor.fetchone()
             if not data_from_table_files:
@@ -416,32 +465,33 @@ class PictureDb:
             file_checked=data_from_table_files[7],
         )
 
-        assert pic_meta.id == file_meta.picture_id, \
-            'load_picture_meta: database integrity error'
+        assert (
+            pic_meta.id == file_meta.picture_id
+        ), "load_picture_meta: database integrity error"
 
         if pic_meta.thumbnail:
-            img_bytes = io.BytesIO(
-                pic_meta.thumbnail.encode(exif.codec))
+            img_bytes = io.BytesIO(pic_meta.thumbnail.encode(exif.codec))
             im = exif.get_pil_image(img_bytes)
 
         lat_lon_str, lat_lon_val = exif.convert_gps(
-            pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude)
+            pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude
+        )
 
         return im, pic_meta, file_meta, lat_lon_str, lat_lon_val
 
     @classmethod
     @DbUtils.connect
     def select_pics_for_merge(cls, source_folder, destination_folder, cursor):
-        '''  method that checks if picture is in the database. If it is
-             not moves picture from source folder to the destination folder
-        '''
+        """method that checks if picture is in the database. If it is
+        not moves picture from source folder to the destination folder
+        """
         progress_message = progress_message_generator(
-            f'merging pictures from {source_folder}'
+            f"merging pictures from {source_folder}"
         )
-        log_file = os.path.join(source_folder, '_select_pictures_to_merge.log')
-        with open(log_file, 'at') as f:
+        log_file = os.path.join(source_folder, "_select_pictures_to_merge.log")
+        with open(log_file, "at") as f:
             c_time = datetime.datetime.now()
-            f.write(f'===> Select pictures to merge: {c_time}\n')
+            f.write(f"===> Select pictures to merge: {c_time}\n")
 
         log_lines = []
         for foldername, _, filenames in os.walk(source_folder):
@@ -454,48 +504,59 @@ class PictureDb:
                 next(progress_message)
 
                 # check on md5_signature
-                sql_string = (f'SELECT id FROM {cls.table_pictures} WHERE '
-                              f'md5_signature = \'{pic_meta.md5_signature}\';')
+                sql_string = (
+                    f"SELECT id FROM {cls.table_pictures} WHERE "
+                    f"md5_signature = '{pic_meta.md5_signature}';"
+                )
                 cursor.execute(sql_string)
                 if cursor.fetchone():
-                    log_lines.append(f'{full_file_name} already in database: '
-                                     f'match md5_signature, {pic_meta.md5_signature}')
+                    log_lines.append(
+                        f"{full_file_name} already in database: "
+                        f"match md5_signature, {pic_meta.md5_signature}"
+                    )
                     continue
 
                 # check on picture dates
                 if pic_meta.date_picture:
-                    sql_string = (f'SELECT id FROM {cls.table_pictures} WHERE '
-                                  f'date_picture = \'{pic_meta.date_picture}\';')
+                    sql_string = (
+                        f"SELECT id FROM {cls.table_pictures} WHERE "
+                        f"date_picture = '{pic_meta.date_picture}';"
+                    )
                     cursor.execute(sql_string)
                     if cursor.fetchone():
                         log_lines.append(
-                            f'{full_file_name} seems already in database: '
-                            f'match date_picture {pic_meta.date_picture}...'
+                            f"{full_file_name} seems already in database: "
+                            f"match date_picture {pic_meta.date_picture}..."
                         )
                         continue
 
                 else:
                     sql_string = (
-                        f'SELECT id FROM {cls.table_files} WHERE '
-                        f'file_modified = \'{file_meta.file_modified}\' AND '
-                        f'file_name = \'{file_meta.file_name}\';')
+                        f"SELECT id FROM {cls.table_files} WHERE "
+                        f"file_modified = '{file_meta.file_modified}' AND "
+                        f"file_name = '{file_meta.file_name}';"
+                    )
                     cursor.execute(sql_string)
                     if cursor.fetchone():
                         log_lines.append(
-                            f'{full_file_name} seems already in database: '
-                            f'match file modified {file_meta.file_modified} and '
-                            f'{file_meta.file_name}...'
+                            f"{full_file_name} seems already in database: "
+                            f"match file modified {file_meta.file_modified} and "
+                            f"{file_meta.file_name}..."
                         )
                         continue
 
-                log_lines.append(f'{full_file_name} not found in database '
-                                 f'and moved to {destination_folder}')
-                shutil.move(os.path.join(foldername, filename),
-                            os.path.join(destination_folder, filename))
+                log_lines.append(
+                    f"{full_file_name} not found in database "
+                    f"and moved to {destination_folder}"
+                )
+                shutil.move(
+                    os.path.join(foldername, filename),
+                    os.path.join(destination_folder, filename),
+                )
 
-        with open(log_file, 'at') as f:
+        with open(log_file, "at") as f:
             for line in log_lines:
-                f.write(line + '\n')
+                f.write(line + "\n")
 
         print()
 
@@ -503,8 +564,8 @@ class PictureDb:
     @DbUtils.connect
     def review_required(cls, accepted_review_date, picture_id, cursor):
         sql_string = (
-            f'SELECT review_date FROM {cls.table_reviews} '
-            f'WHERE picture_id={picture_id};'
+            f"SELECT review_date FROM {cls.table_reviews} "
+            f"WHERE picture_id={picture_id};"
         )
         cursor.execute(sql_string)
         latest_review_date = datetime.datetime(1800, 1, 1)
@@ -522,7 +583,7 @@ class PictureDb:
     def delete_ids(cls, deleted_ids, cursor):
         if deleted_ids:
             sql_string = (
-                f'DELETE FROM {cls.table_pictures} WHERE id=any(array{deleted_ids});'
+                f"DELETE FROM {cls.table_pictures} WHERE id=any(array{deleted_ids});"
             )
             cursor.execute(sql_string)
 
@@ -531,87 +592,104 @@ class PictureDb:
     def update_reviews(cls, pic_selection, reviewer_name, cursor):
         for pic in pic_selection:
             sql_string = (
-                f'INSERT INTO {cls.table_reviews} ('
-                f'picture_id, reviewer_name, review_date) '
-                f'VALUES (%s, %s, %s);'
+                f"INSERT INTO {cls.table_reviews} ("
+                f"picture_id, reviewer_name, review_date) "
+                f"VALUES (%s, %s, %s);"
             )
             cursor.execute(
-                sql_string, (
-                    pic.get('id'), reviewer_name, datetime.datetime.now())
-                )
+                sql_string, (pic.get("id"), reviewer_name, datetime.datetime.now())
+            )
 
     @classmethod
     @DbUtils.connect
-    def remove_duplicate_pics(cls, deleted_folder, cursor, method='md5',
-                              accepted_review_date=datetime.datetime(1900, 1, 1)):
-        '''  sort out duplicate pictures by either using the md5_signature or picture
-             date.
-        '''
+    def remove_duplicate_pics(
+        cls,
+        deleted_folder,
+        cursor,
+        method="md5",
+        accepted_review_date=datetime.datetime(1900, 1, 1),
+    ):
+        """sort out duplicate pictures by either using the md5_signature or picture
+        date.
+        """
         utils = DbUtils()
         reviewer_name = utils.get_name()
 
-        if method == 'md5':
-            method = 'md5_signature'
+        if method == "md5":
+            method = "md5_signature"
 
-        elif method == 'date':
-            method = 'date_picture'
+        elif method == "date":
+            method = "date_picture"
 
         else:
-            print(f'{method} not valid, choose \'md5\' or \'time\'...')
+            print(f"{method} not valid, choose 'md5' or 'time'...")
             return
 
-        log_file = os.path.join(deleted_folder, '_delete_duplicate_pictures.log')
-        with open(log_file, 'at') as f:
+        log_file = os.path.join(deleted_folder, "_delete_duplicate_pictures.log")
+        with open(log_file, "at") as f:
             c_time = datetime.datetime.now()
-            f.write(f'===> Remove duplicates with method \'{method}\': {c_time}\n')
+            f.write(f"===> Remove duplicates with method '{method}': {c_time}\n")
 
-        sql_string = (f'SELECT {method} FROM {cls.table_pictures} WHERE {method} IN '
-                      f'(SELECT {method} FROM {cls.table_pictures} GROUP BY {method} '
-                      f'HAVING count(*) > 1) ORDER BY id;')
+        sql_string = (
+            f"SELECT {method} FROM {cls.table_pictures} WHERE {method} IN "
+            f"(SELECT {method} FROM {cls.table_pictures} GROUP BY {method} "
+            f"HAVING count(*) > 1) ORDER BY id;"
+        )
         cursor.execute(sql_string)
         list_duplicates = {item[0] for item in cursor.fetchall()}
 
         for item in list_duplicates:
-            sql_string = (f'SELECT id, thumbnail '
-                          f'FROM {cls.table_pictures} WHERE {method}=\'{item}\';')
+            sql_string = (
+                f"SELECT id, thumbnail "
+                f"FROM {cls.table_pictures} WHERE {method}='{item}';"
+            )
             cursor.execute(sql_string)
 
             pic_selection = []
             choices = []
             for i, pic_tuple in enumerate(cursor.fetchall()):
 
-                sql_string = (f'SELECT file_path, file_name '
-                              f'FROM {cls.table_files} WHERE picture_id={pic_tuple[0]};')
+                sql_string = (
+                    f"SELECT file_path, file_name "
+                    f"FROM {cls.table_files} WHERE picture_id={pic_tuple[0]};"
+                )
                 cursor.execute(sql_string)
                 file_path, file_name = cursor.fetchone()
 
                 if not cls.review_required(accepted_review_date, pic_tuple[0]):
-                    print(f'no review required for: '
-                          f'{pic_tuple[0]}, {file_path}, {file_name}')
+                    print(
+                        f"no review required for: "
+                        f"{pic_tuple[0]}, {file_path}, {file_name}"
+                    )
                     continue
                 else:
                     pass
 
                 choices.append(i + 1)
-                pic_selection.append({
-                    'index': i + 1,
-                    'id': pic_tuple[0],
-                    'file_path': file_path,
-                    'file_name': file_name,
-                    'thumbnail': io.BytesIO(pic_tuple[1].encode(exif.codec))})
+                pic_selection.append(
+                    {
+                        "index": i + 1,
+                        "id": pic_tuple[0],
+                        "file_path": file_path,
+                        "file_name": file_name,
+                        "thumbnail": io.BytesIO(pic_tuple[1].encode(exif.codec)),
+                    }
+                )
 
             if not pic_selection:
                 continue
 
-            print('-'*80)
+            print("-" * 80)
             pic_arrays = []
             for pic in pic_selection:
                 height, width = (200, 200)
-                array_padded = np.ones((height, width, 3), dtype=np.uint8)*200
+                array_padded = np.ones((height, width, 3), dtype=np.uint8) * 200
 
-                print(f'[{pic.get("index")}] '
-                      f'[{os.path.join(pic.get("file_path"), pic.get("file_name"))}]')
-                if not (im := exif.get_pil_image(pic.get('thumbnail'))):
+                print(
+                    f'[{pic.get("index")}] '
+                    f'[{os.path.join(pic.get("file_path"), pic.get("file_name"))}]'
+                )
+                if not (im := exif.get_pil_image(pic.get("thumbnail"))):
                     continue
 
                 image_array = np.array(im)
@@ -635,18 +713,22 @@ class PictureDb:
                 log_lines = []
                 deleted_ids = []
                 for pic in pic_selection:
-                    if pic.get('index') in answer_delete:
-                        deleted_ids.append(pic.get('id'))
-                        _from = os.path.join(pic.get('file_path'), pic.get('file_name'))
-                        _to = os.path.join(deleted_folder, pic.get('file_name'))
+                    if pic.get("index") in answer_delete:
+                        deleted_ids.append(pic.get("id"))
+                        _from = os.path.join(pic.get("file_path"), pic.get("file_name"))
+                        _to = os.path.join(deleted_folder, pic.get("file_name"))
 
                         try:
                             shutil.move(_from, _to)
-                            log_line = (f'file deleted, id: {pic.get("id")}, '
-                                        f'file_name: {_from}')
+                            log_line = (
+                                f'file deleted, id: {pic.get("id")}, '
+                                f"file_name: {_from}"
+                            )
                         except FileNotFoundError:
-                            log_line = (f'file not in folder, id: {pic.get("id")}, '
-                                        f'file_name: {_from}')
+                            log_line = (
+                                f'file not in folder, id: {pic.get("id")}, '
+                                f"file_name: {_from}"
+                            )
 
                         print(log_line)
                         log_lines.append(log_line)
@@ -655,34 +737,42 @@ class PictureDb:
                 # return of this function
                 cls.delete_ids(deleted_ids)
 
-                with open(log_file, 'at') as f:
+                with open(log_file, "at") as f:
                     for line in log_lines:
-                        f.write(line + '\n')
+                        f.write(line + "\n")
 
     @classmethod
     @DbUtils.connect
     def remove_pics_by_id(cls, deleted_folder, start_id, cursor, end_id=None):
-        '''  remove pictures that are in dabase with id between start_id and end_id
-             patch needed as google photo may merge duplicate photos
-        '''
-        log_file = os.path.join(deleted_folder, '_delete_pictures_by_id.log')
-        with open(log_file, 'at') as f:
+        """remove pictures that are in dabase with id between start_id and end_id
+        patch needed as google photo may merge duplicate photos
+        """
+        log_file = os.path.join(deleted_folder, "_delete_pictures_by_id.log")
+        with open(log_file, "at") as f:
             c_time = datetime.datetime.now()
             if end_id:
-                f.write(f'===> Remove pictured by id from '
-                        f'{start_id} to {end_id}: {c_time}\n')
+                f.write(
+                    f"===> Remove pictured by id from "
+                    f"{start_id} to {end_id}: {c_time}\n"
+                )
 
             else:
-                f.write(f'===> Remove pictured by id from '
-                        f'{start_id} until last: {c_time}\n')
+                f.write(
+                    f"===> Remove pictured by id from "
+                    f"{start_id} until last: {c_time}\n"
+                )
 
         if end_id:
-            sql_string = (f'select id, file_path, file_name from {cls.table_files} '
-                          f'where id between {start_id} and {end_id}')
+            sql_string = (
+                f"select id, file_path, file_name from {cls.table_files} "
+                f"where id between {start_id} and {end_id}"
+            )
 
         else:
-            sql_string = (f'select id, file_path, file_name from {cls.table_files} '
-                          f'where id >= {start_id}')
+            sql_string = (
+                f"select id, file_path, file_name from {cls.table_files} "
+                f"where id >= {start_id}"
+            )
 
         cursor.execute(sql_string)
 
@@ -698,37 +788,35 @@ class PictureDb:
 
             try:
                 shutil.move(_from, _to)
-                log_line = (f'file deleted, id: {_id}, '
-                            f'file_name: {_from}')
+                log_line = f"file deleted, id: {_id}, " f"file_name: {_from}"
 
             except FileNotFoundError:
-                log_line = (f'file not in folder, id: {_id}, '
-                            f'file_name: {_from}')
+                log_line = f"file not in folder, id: {_id}, " f"file_name: {_from}"
 
             log_lines.append(log_line)
             deleted_ids.append(_id)
 
         cls.delete_ids(deleted_ids)
 
-        with open(log_file, 'at') as f:
+        with open(log_file, "at") as f:
             for line in log_lines:
-                f.write(line + '\n')
+                f.write(line + "\n")
 
     @classmethod
     @DbUtils.connect
     def add_to_locations_table(cls, picture_id, location, cursor):
-        ''' add record to locations map. It first checks if picture_id is already
-            in database.
-            :arguments:
-                picture_id: integer
-                location: tuple(latitude, longitude, altitude)
-            :return:
-                True: if record is added
-                False: if record already in database
-        '''
+        """add record to locations map. It first checks if picture_id is already
+        in database.
+        :arguments:
+            picture_id: integer
+            location: tuple(latitude, longitude, altitude)
+        :return:
+            True: if record is added
+            False: if record already in database
+        """
         sql_string = (
-            f'select picture_id from {cls.table_locations} '
-            f'where picture_id = {picture_id} '
+            f"select picture_id from {cls.table_locations} "
+            f"where picture_id = {picture_id} "
         )
         cursor.execute(sql_string)
         if cursor.fetchone():
@@ -738,18 +826,16 @@ class PictureDb:
         point = Point(location[1], location[0])
 
         sql_string_locations = (
-            f'INSERT INTO {cls.table_locations} '
-            f'(picture_id, latitude, longitude, altitude, geom) '
-            f'VALUES (%s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) '
+            f"INSERT INTO {cls.table_locations} "
+            f"(picture_id, latitude, longitude, altitude, geom) "
+            f"VALUES (%s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) "
         )
 
-        #TODO fix patch elevation is Null
+        # TODO fix patch elevation is Null
         altitude = 0.0 if location[2] is None else location[2]
         cursor.execute(
-            sql_string_locations, (
-                picture_id, location[0], location[1], altitude,
-                point.wkb_hex, EPSG_WGS84
-            )
+            sql_string_locations,
+            (picture_id, location[0], location[1], altitude, point.wkb_hex, EPSG_WGS84),
         )
         return True
 
@@ -762,18 +848,18 @@ class PictureDb:
                 picture_ids = json.load(json_file)
 
             sql_string_pictures = (
-                f'select id, gps_latitude, gps_longitude, gps_altitude '
-                f'from {cls.table_pictures} where id=any(array{picture_ids})'
+                f"select id, gps_latitude, gps_longitude, gps_altitude "
+                f"from {cls.table_pictures} where id=any(array{picture_ids})"
             )
         elif picture_ids:
             sql_string_pictures = (
-                f'select id, gps_latitude, gps_longitude, gps_altitude '
-                f'from {cls.table_pictures} where id=any(array{picture_ids})'
+                f"select id, gps_latitude, gps_longitude, gps_altitude "
+                f"from {cls.table_pictures} where id=any(array{picture_ids})"
             )
         else:
             sql_string_pictures = (
-                f'select id, gps_latitude, gps_longitude, gps_altitude '
-                f'from {cls.table_pictures} where not rotate_checked'
+                f"select id, gps_latitude, gps_longitude, gps_altitude "
+                f"from {cls.table_pictures} where not rotate_checked"
             )
         cursor.execute(sql_string_pictures)
 
@@ -784,7 +870,7 @@ class PictureDb:
             if lat_lon_str:
                 if cls.add_to_locations_table(pic[0], lat_lon_val):
                     counter += 1
-                    print(f'{i:5}: {counter:4} pic id: {pic[0]}, {lat_lon_str}')
+                    print(f"{i:5}: {counter:4} pic id: {pic[0]}, {lat_lon_str}")
 
     @classmethod
     @DbUtils.connect
@@ -792,9 +878,7 @@ class PictureDb:
         if not picture_ids:
             return
 
-        sql_remove_locations = (
-            f'delete from {cls.table_locations} where picture_id=any(array{picture_ids})'
-        )
+        sql_remove_locations = f"delete from {cls.table_locations} where picture_id=any(array{picture_ids})"
         cursor.execute(sql_remove_locations)
 
     @classmethod
@@ -805,31 +889,31 @@ class PictureDb:
 
         for picture_id in picture_ids:
             sql_string = (
-                f'update {cls.table_pictures} '
-                f'set rotate_checked = True '
-                f'where id = {picture_id}'
+                f"update {cls.table_pictures} "
+                f"set rotate_checked = True "
+                f"where id = {picture_id}"
             )
             cursor.execute(sql_string)
 
     @classmethod
     @DbUtils.connect
     def update_image(cls, picture_id, image, rotate, cursor):
-        '''  Assumes thumbnail is changed by a rotation. This method replaces
-             the thumbnail and rotation in the database.
-             Note the original md5 signature based on the original thumbnail
-             at rotation 0 remains unchanged.
-        '''
+        """Assumes thumbnail is changed by a rotation. This method replaces
+        the thumbnail and rotation in the database.
+        Note the original md5 signature based on the original thumbnail
+        at rotation 0 remains unchanged.
+        """
         img_bytes = io.BytesIO()
-        image.save(img_bytes, format='JPEG')
+        image.save(img_bytes, format="JPEG")
         picture_bytes = img_bytes.getvalue()
 
         thumbnail = json.dumps(picture_bytes.decode(exif.codec))
 
         sql_str = (
-            f'UPDATE {cls.table_pictures} '
-            f'SET thumbnail = (%s), '
-            f'rotate = (%s) '
-            f'WHERE id= (%s) '
+            f"UPDATE {cls.table_pictures} "
+            f"SET thumbnail = (%s), "
+            f"rotate = (%s) "
+            f"WHERE id= (%s) "
         )
         cursor.execute(sql_str, (thumbnail, rotate, picture_id))
 
@@ -837,56 +921,63 @@ class PictureDb:
     @DbUtils.connect
     def store_attributes(cls, picture_id, image, pic_meta, cursor):
         img_bytes = io.BytesIO()
-        image.save(img_bytes, format='JPEG')
+        image.save(img_bytes, format="JPEG")
         picture_bytes = img_bytes.getvalue()
 
         thumbnail = json.dumps(picture_bytes.decode(exif.codec))
         pic_meta = exif.convert_to_json(pic_meta)
 
         sql_str = (
-            f'UPDATE {cls.table_pictures} '
-            f'SET thumbnail = (%s), '
-            f'date_picture = (%s), '
-            f'camera_make = (%s), '
-            f'camera_model = (%s), '
-            f'gps_latitude = (%s), '
-            f'gps_longitude = (%s), '
-            f'gps_altitude = (%s), '
-            f'gps_img_dir = (%s), '
-            f'rotate = (%s) '
-            f'WHERE id= (%s) '
+            f"UPDATE {cls.table_pictures} "
+            f"SET thumbnail = (%s), "
+            f"date_picture = (%s), "
+            f"camera_make = (%s), "
+            f"camera_model = (%s), "
+            f"gps_latitude = (%s), "
+            f"gps_longitude = (%s), "
+            f"gps_altitude = (%s), "
+            f"gps_img_dir = (%s), "
+            f"rotate = (%s) "
+            f"WHERE id= (%s) "
         )
-        cursor.execute(sql_str, (
-            thumbnail,
-            pic_meta.date_picture, pic_meta.camera_make, pic_meta.camera_model,
-            pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude,
-            pic_meta.gps_img_direction, pic_meta.rotate, picture_id
-        ))
+        cursor.execute(
+            sql_str,
+            (
+                thumbnail,
+                pic_meta.date_picture,
+                pic_meta.camera_make,
+                pic_meta.camera_model,
+                pic_meta.gps_latitude,
+                pic_meta.gps_longitude,
+                pic_meta.gps_altitude,
+                pic_meta.gps_img_direction,
+                pic_meta.rotate,
+                picture_id,
+            ),
+        )
 
     @classmethod
     @DbUtils.connect
     def get_file_paths(cls, cursor):
-        ''' get a sorted list of unique file_paths with base folder removed
-        '''
-        pattern = r'^[a-zA-Z]:\\(?:pictures\\){1,2}(.*)\\$'
+        """get a sorted list of unique file_paths with base folder removed"""
+        pattern = r"^[a-zA-Z]:\\(?:pictures\\){1,2}(.*)\\$"
         sql_str = (
-            f'SELECT DISTINCT lower(file_path) fp from {cls.table_files} ORDER BY fp'
+            f"SELECT DISTINCT lower(file_path) fp from {cls.table_files} ORDER BY fp"
         )
         cursor.execute(sql_str)
-        return  sorted(list(
-            set(re.search(pattern, val[0]).group(1) for val in cursor.fetchall())
-        ))
+        return sorted(
+            list(set(re.search(pattern, val[0]).group(1) for val in cursor.fetchall()))
+        )
 
     @classmethod
     @DbUtils.connect
     def get_ids_by_folder(cls, folder, cursor):
-        ''' get the ids of pictures where folder matches.
-        '''
-        folder = folder.replace('\'', '\'\'')
+        """get the ids of pictures where folder matches."""
+        folder = folder.replace("'", "''")
         sql_str = (
-            f'SELECT p.id from {cls.table_pictures} as p '
-            f'JOIN {cls.table_files} as f on f.picture_id = p.id '
-            f"WHERE lower(f.file_path) LIKE '%{folder}\\\\\'"
+            f"SELECT p.id from {cls.table_pictures} as p "
+            f"JOIN {cls.table_files} as f on f.picture_id = p.id "
+            f"WHERE lower(f.file_path) LIKE '%{folder}\\\\'"
         )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
@@ -894,14 +985,12 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def get_ids_by_date(cls, date_select, cursor):
-        ''' get the ids of pictures where the file creation date is greater
-            than date_select
-            if check_rotate_done then do not return ids where rotation has been
-            checked, otherwise return all
-        '''
+        """get the ids of pictures where the file created date is greater
+        than date_select
+        """
         sql_str = (
-            f'SELECT p.id from {cls.table_pictures} as p '
-            f'JOIN {cls.table_files} as f on f.picture_id = p.id '
+            f"SELECT p.id from {cls.table_pictures} as p "
+            f"JOIN {cls.table_files} as f on f.picture_id = p.id "
             f'WHERE f.file_created > \'{date_select.strftime("%Y-%m-%d")}\' '
         )
         cursor.execute(sql_str)
@@ -910,28 +999,26 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def filter_ids(cls, ids, cursor, db_filter=DbFilter.ALL):
-        ''' filter ids on value of db_filter.
-        '''
+        """filter ids on value of db_filter."""
         match db_filter:
             case DbFilter.NOGPS:
                 sql_str = (
-                    f'SELECT id from {cls.table_pictures} '
-                    f'WHERE id=any(array{ids}) AND length(gps_latitude::text) < 3'
+                    f"SELECT id from {cls.table_pictures} "
+                    f"WHERE id=any(array{ids}) AND length(gps_latitude::text) < 3"
                 )
             case DbFilter.CHECKED:
                 sql_str = (
-                    f'SELECT id from {cls.table_pictures} '
-                    f'WHERE id=any(array{ids}) AND rotate_checked'
+                    f"SELECT id from {cls.table_pictures} "
+                    f"WHERE id=any(array{ids}) AND rotate_checked"
                 )
             case DbFilter.NOT_CHECKED:
                 sql_str = (
-                    f'SELECT id from {cls.table_pictures} '
-                    f'WHERE id=any(array{ids}) AND not rotate_checked'
+                    f"SELECT id from {cls.table_pictures} "
+                    f"WHERE id=any(array{ids}) AND not rotate_checked"
                 )
             case other:
                 sql_str = (
-                    f'SELECT id from {cls.table_pictures} '
-                    f'WHERE id=any(array{ids})'
+                    f"SELECT id from {cls.table_pictures} " f"WHERE id=any(array{ids})"
                 )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
@@ -939,11 +1026,10 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def set_rotate_check(cls, pic_ids, cursor, set_value=True):
-        ''' set rotate_check to True or False
-        '''
+        """set rotate_check to True or False"""
         sql_str = (
-            f'UPDATE {cls.table_pictures} set rotate_checked = {set_value} '
-            f'where id=any(array{pic_ids}) '
+            f"UPDATE {cls.table_pictures} set rotate_checked = {set_value} "
+            f"where id=any(array{pic_ids}) "
         )
         cursor.execute(sql_str)
 
@@ -951,7 +1037,8 @@ class PictureDb:
     @DbUtils.connect
     def replace_thumbnail(cls, base_folder, cursor):
         progress_message = progress_message_generator(
-            f'update picture for {base_folder}')
+            f"update picture for {base_folder}"
+        )
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
@@ -959,9 +1046,11 @@ class PictureDb:
                 sql_foldername = foldername.replace("'", "''")
                 sql_filename = filename.replace("'", "''")
 
-                sql_str = (f'SELECT picture_id FROM {cls.table_files} '
-                           f'WHERE file_path = \'{sql_foldername}\\\' AND '
-                           f'file_name = \'{sql_filename}\'')
+                sql_str = (
+                    f"SELECT picture_id FROM {cls.table_files} "
+                    f"WHERE file_path = '{sql_foldername}\\' AND "
+                    f"file_name = '{sql_filename}'"
+                )
 
                 cursor.execute(sql_str)
                 try:
@@ -969,13 +1058,14 @@ class PictureDb:
 
                 except TypeError:
                     logger.info(
-                        f'file {os.path.join(foldername, filename)} '
-                        f'not found in database')
+                        f"file {os.path.join(foldername, filename)} "
+                        f"not found in database"
+                    )
                     continue
 
                 fn = os.path.join(foldername, filename)
                 if not (im := exif.get_pil_image(fn)):
-                    logger.info(f'unable to get pil_image for file {fn}')
+                    logger.info(f"unable to get pil_image for file {fn}")
                     continue
 
                 cls.update_image(picture_id, im, 0)
@@ -984,50 +1074,49 @@ class PictureDb:
     @classmethod
     @DbUtils.connect
     def update_image_md5(cls, picture_id, image, rotate, cursor):
-        '''  This method replaces the thumbnail and md5.
-        '''
+        """This method replaces the thumbnail and md5."""
         picture_bytes = exif.get_image_bytes(image)
         thumbnail = json.dumps(picture_bytes.decode(exif.codec))
         md5_signature = hashlib.md5(picture_bytes).hexdigest()
 
         sql_str = (
-            f'UPDATE {cls.table_pictures} '
-            f'SET thumbnail = (%s), '
-            f'md5_signature = (%s), '
-            f'rotate = (%s) '
-            f'WHERE id= (%s) '
+            f"UPDATE {cls.table_pictures} "
+            f"SET thumbnail = (%s), "
+            f"md5_signature = (%s), "
+            f"rotate = (%s) "
+            f"WHERE id= (%s) "
         )
         cursor.execute(sql_str, (thumbnail, md5_signature, rotate, picture_id))
 
     @classmethod
     @DbUtils.connect
     def replace_thumbnail_md5(cls, id_list, cursor):
-        ''' patch to put back missing files of pictures that were already in the database
-            but with different size thumbnail and md5
-        '''
+        """patch to put back missing files of pictures that were already in the database
+        but with different size thumbnail and md5
+        """
         progress_message = progress_message_generator(
-            f'update picture and md5 for {id_list[0]} ... {id_list[-1]}')
+            f"update picture and md5 for {id_list[0]} ... {id_list[-1]}"
+        )
 
         for picture_id in id_list:
 
-            sql_str = (f'SELECT file_path, file_name FROM {cls.table_files} '
-                       f'WHERE picture_id = {picture_id} ')
+            sql_str = (
+                f"SELECT file_path, file_name FROM {cls.table_files} "
+                f"WHERE picture_id = {picture_id} "
+            )
 
             cursor.execute(sql_str)
             result = cursor.fetchone()
 
             try:
-                filename_abs = os.path.join(
-                    result[0], result[1])
+                filename_abs = os.path.join(result[0], result[1])
 
             except TypeError:
-                logger.info(
-                    f'file for {picture_id} not found in database'
-                )
+                logger.info(f"file for {picture_id} not found in database")
                 continue
 
             if not (im := exif.get_pil_image(filename_abs)):
-                logger.info(f'unable to get pil_image for file {filename_abs}')
+                logger.info(f"unable to get pil_image for file {filename_abs}")
                 continue
 
             cls.update_image_md5(picture_id, im, 0)

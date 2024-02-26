@@ -13,6 +13,7 @@
     Interactively pictures can be selected by the folder a pictures was originally stored
     or by the creation date.
 """
+
 import sys
 import json
 import io
