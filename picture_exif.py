@@ -155,7 +155,12 @@ class Exif:
         file_meta.file_name = os.path.basename(filename)
         file_meta.file_path = os.path.abspath(filename).replace(file_meta.file_name, "")
         file_meta.file_modified = datetime.datetime.fromtimestamp(file_stat.st_mtime)
-        file_meta.file_created = datetime.datetime.fromtimestamp(file_stat.st_ctime)
+        if (
+            fct := datetime.datetime.fromtimestamp(file_stat.st_birthtime)
+        ) != datetime.datetime(1980, 1, 1, 0, 0):
+            file_meta.file_created = fct
+        else:
+            file_meta.file_created = file_meta.file_modified
         file_meta.file_size = file_stat.st_size
 
         # exif attributes
