@@ -43,8 +43,8 @@ def progress_message_generator(message):
 
 class DbUtils:
     """utility methods for database"""
-
     host = config("DB_HOST")
+    port=config("PORT")
     db_user = config("DB_USERNAME")
     db_user_pw = config("DB_PASSWORD")
     database = config("DATABASE")
