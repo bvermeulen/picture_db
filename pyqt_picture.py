@@ -18,12 +18,12 @@ import json
 import io
 from pathlib import PureWindowsPath
 from PIL import Image
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QFormLayout, QLabel, QApplication, QPushButton,
-    QComboBox, QShortcut, QLineEdit, QCalendarWidget, QDialog
+    QComboBox, QLineEdit, QCalendarWidget, QDialog
 )
-from PyQt5.QtCore import Qt, QDate
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtGui import QImage, QPixmap, QShortcut
 from picture_exif import Exif
 from picture_db import PictureDb, DbFilter
 
@@ -185,7 +185,7 @@ class PictureShow(QWidget):
 
         vbox_text_action = QVBoxLayout()
         self.text_lbl = QLabel()
-        self.text_lbl.setAlignment(Qt.AlignTop)
+        self.text_lbl.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         box_form = QFormLayout()
         self.e_make = QLineEdit()
@@ -230,7 +230,7 @@ class PictureShow(QWidget):
         reset_rotations_button.clicked.connect(self.cntr_reset_rotations)
 
         # hbox_buttons.addStretch()
-        hbox_buttons.setAlignment(Qt.AlignLeft)
+        hbox_buttons.setAlignment(Qt.AlignmentFlag.AlignLeft)
         hbox_buttons.addWidget(folderselect_button)
         hbox_buttons.addWidget(dateselect_button)
         hbox_buttons.addWidget(anticlockwise_button)
@@ -247,10 +247,10 @@ class PictureShow(QWidget):
 
         self.setLayout(vbox)
 
-        QShortcut(Qt.Key_Left, self, self.cntr_prev)
-        QShortcut(Qt.Key_Right, self, self.cntr_next)
-        QShortcut(Qt.Key_S, self, self.cntr_save)
-        QShortcut(Qt.Key_Space, self, self.rotate_clockwise)
+        QShortcut(Qt.Key.Key_Left, self, self.cntr_prev)
+        QShortcut(Qt.Key.Key_Right, self, self.cntr_next)
+        QShortcut(Qt.Key.Key_S, self, self.cntr_save)
+        QShortcut(Qt.Key.Key_Space, self, self.rotate_clockwise)
 
         self.move(400, 300)
         self.setWindowTitle('Picture ... ')
@@ -358,7 +358,7 @@ class PictureShow(QWidget):
 
     def cntr_folderselect(self):
         folder_dialog = FolderDialog(self.picdb.get_file_paths())
-        if folder_dialog.exec_():
+        if folder_dialog.exec():
             folder = str(
                 PureWindowsPath(folder_dialog.folder)
             ).lower().replace('\\', '\\\\')
@@ -368,7 +368,7 @@ class PictureShow(QWidget):
 
     def cntr_dateselect(self):
         date_dialog = DateDialog()
-        if date_dialog.exec_():
+        if date_dialog.exec():
             id_list = self.picdb.get_ids_by_date(date_dialog.date)
             self.id_list = self.picdb.filter_ids(id_list, db_filter=self.db_filter)
             self.update_id_list()
@@ -399,7 +399,7 @@ class PictureShow(QWidget):
 def main():
     app = QApplication([])
     _ = PictureShow(sys.argv)
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 
 if __name__ == '__main__':

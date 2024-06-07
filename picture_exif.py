@@ -341,7 +341,7 @@ class Exif:
     def get_pil_image(file_name):
         try:
             im = Image.open(file_name)
-            im.thumbnail(DATABASE_PICTURE_SIZE, Image.ANTIALIAS)
+            im.thumbnail(DATABASE_PICTURE_SIZE, Image.Resampling.LANCZOS)
 
         except Exception as e:  #pylint: disable=broad-except
             im = None
