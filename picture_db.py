@@ -6,13 +6,14 @@ import io
 import json
 import os
 import re
+import psutil
+from decouple import config
 from functools import wraps
 import numpy as np
 from shapely.geometry import Point
 import psycopg2
-from decouple import config
-import psutil
-from picture_exif import Exif, PicturesTable, FilesTable
+from geopy.geocoders import Nominatim
+from picture_exif import Exif, PicturesTable, FilesTable, InfoTable
 from Utils.plogger import Logger
 
 logformat = "%(asctime)s:%(levelname)s:%(message)s"
@@ -27,6 +28,7 @@ class DbFilter(Enum):
     ALL = 4
 
 
+geolocator = Nominatim(user_agent="picture_db")
 EPSG_WGS84 = 4326
 exif = Exif()
 
@@ -43,8 +45,9 @@ def progress_message_generator(message):
 
 class DbUtils:
     """utility methods for database"""
+
     host = config("DB_HOST")
-    port=config("PORT")
+    port = config("PORT")
     db_user = config("DB_USERNAME")
     db_user_pw = config("DB_PASSWORD")
     database = config("DATABASE")
@@ -93,7 +96,6 @@ class DbUtils:
         while not (
             any(val in [-1, 0] for val in answer_delete) and len(answer_delete) == 1
         ) and (not any(val in choices for val in answer_delete)):
-
             _answer = input(
                 "Delete picture numbers [separated by spaces] "
                 "(press 0 to quit, space to skip): "
@@ -207,6 +209,7 @@ class PictureDb:
             f"latitude DOUBLE PRECISION NOT NULL, "
             f"longitude DOUBLE PRECISION NOT NULL, "
             f"altitude REAL NOT NULL, "
+            f"geolocation_info JSON, "
             f"geom geometry(Point, {EPSG_WGS84})"
             f");"
         )
@@ -315,7 +318,6 @@ class PictureDb:
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
-
                 valid_name = filename[-4:].lower() in [".jpg", ".png"] or filename[
                     -5:
                 ].lower() in [".jpeg", ".heic"]
@@ -363,7 +365,6 @@ class PictureDb:
                                 pic_meta.rotate_checked,
                             ),
                         )
-
                         picture_id = cursor.fetchone()[0]
 
                         cursor.execute(
@@ -378,7 +379,6 @@ class PictureDb:
                                 True,
                             ),
                         )
-
                         lat_lon_str, lat_lon_val = exif.convert_gps(
                             pic_meta.gps_latitude,
                             pic_meta.gps_longitude,
@@ -388,7 +388,6 @@ class PictureDb:
                             cls.add_to_locations_table(
                                 picture_id, pic_meta.date_picture, lat_lon_val
                             )
-
                     else:
                         sql_string = (
                             f"UPDATE {cls.table_files} "
@@ -422,21 +421,23 @@ class PictureDb:
             im: PIL image
             pic_meta: PicturesTable
             file_meta: FilesTable
+            info_meta: InfoTable
             lat_lon_str: string
+            lat_lon_val: tuple(float, float, float)
         """
-        sql_string = f"SELECT * FROM {cls.table_pictures} WHERE id={_id};"
-        cursor.execute(sql_string)
+        empty_return = None, None, None, None, None, (None, None, None)
+        sql_string = f"SELECT * FROM {cls.table_pictures} WHERE id=%s;"
+        cursor.execute(sql_string, (_id,))
         data_from_table_pictures = cursor.fetchone()
 
         if not data_from_table_pictures:
-            return None, None, None, None, (None, None, None)
+            return empty_return
 
-        else:
-            sql_string = f"SELECT * FROM {cls.table_files} WHERE picture_id={_id};"
-            cursor.execute(sql_string)
-            data_from_table_files = cursor.fetchone()
-            if not data_from_table_files:
-                return None, None, None, None
+        sql_string = f"SELECT * FROM {cls.table_files} WHERE picture_id=%s;"
+        cursor.execute(sql_string, (_id,))
+        data_from_table_files = cursor.fetchone()
+        if not data_from_table_files:
+            return empty_return
 
         pic_meta = PicturesTable(
             id=data_from_table_pictures[0],
@@ -453,7 +454,6 @@ class PictureDb:
             rotate=data_from_table_pictures[11],
             rotate_checked=data_from_table_pictures[12],
         )
-
         file_meta = FilesTable(
             id=data_from_table_files[0],
             picture_id=data_from_table_files[1],
@@ -464,11 +464,40 @@ class PictureDb:
             file_size=data_from_table_files[6],
             file_checked=data_from_table_files[7],
         )
-
         assert (
             pic_meta.id == file_meta.picture_id
         ), "load_picture_meta: database integrity error"
 
+        sql_string = (
+            f"SELECT geolocation_info FROM {cls.table_locations} WHERE picture_id=%s"
+        )
+        cursor.execute(sql_string, (_id,))
+        if geolocation_info := cursor.fetchone():
+            geolocation_info = geolocation_info[0]
+            info_meta = InfoTable(
+                country=geolocation_info.get("country", ""),
+                state=", ".join(
+                    v
+                    for v in [
+                        geolocation_info.get(k, "") for k in ["state", "province"]
+                    ]
+                    if v
+                ),
+                city=", ".join(
+                    v
+                    for v in [
+                        geolocation_info.get(k, "")
+                        for k in ["city", "municipality", "town", "village"]
+                    ]
+                    if v
+                ),
+                suburb=geolocation_info.get("suburb", ""),
+                road=geolocation_info.get("road", ""),
+            )
+        else:
+            info_meta = InfoTable(country="", state="", city="", suburb="", road="")
+
+        im = None
         if pic_meta.thumbnail:
             img_bytes = io.BytesIO(pic_meta.thumbnail.encode(exif.codec))
             im = exif.get_pil_image(img_bytes)
@@ -476,8 +505,7 @@ class PictureDb:
         lat_lon_str, lat_lon_val = exif.convert_gps(
             pic_meta.gps_latitude, pic_meta.gps_longitude, pic_meta.gps_altitude
         )
-
-        return im, pic_meta, file_meta, lat_lon_str, lat_lon_val
+        return im, pic_meta, file_meta, info_meta, lat_lon_str, lat_lon_val
 
     @classmethod
     @DbUtils.connect
@@ -648,7 +676,6 @@ class PictureDb:
             pic_selection = []
             choices = []
             for i, pic_tuple in enumerate(cursor.fetchall()):
-
                 sql_string = (
                     f"SELECT file_path, file_name "
                     f"FROM {cls.table_files} WHERE picture_id={pic_tuple[0]};"
@@ -802,6 +829,17 @@ class PictureDb:
             for line in log_lines:
                 f.write(line + "\n")
 
+    @staticmethod
+    def get_geolocation_info(longitude: float, latitude: float) -> dict | None:
+        lat_lon = ", ".join([str(latitude), str(longitude)])
+        try:
+            location = geolocator.reverse(lat_lon, language="en")
+            return json.dumps(location.raw["address"])
+
+        except Exception as error:
+            print(f"Error getting geolocation info: {error=}")
+            return
+
     @classmethod
     @DbUtils.connect
     def add_to_locations_table(cls, picture_id, location, cursor):
@@ -822,20 +860,28 @@ class PictureDb:
         if cursor.fetchone():
             return False
 
-        # Point has format (Longitude, Latitude) like (x, y)
+        # Point and get_geolocation_info have format (Longitude, Latitude) like (x, y)
         point = Point(location[1], location[0])
-
+        geolocation_info = cls.get_geolocation_info(location[1], location[0])
         sql_string_locations = (
             f"INSERT INTO {cls.table_locations} "
-            f"(picture_id, latitude, longitude, altitude, geom) "
-            f"VALUES (%s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) "
+            f"(picture_id, latitude, longitude, altitude, geolocation_info, geom) "
+            f"VALUES (%s, %s, %s, %s, %, ST_SetSRID(%s::geometry, %s)) "
         )
 
         # TODO fix patch elevation is Null
         altitude = 0.0 if location[2] is None else location[2]
         cursor.execute(
             sql_string_locations,
-            (picture_id, location[0], location[1], altitude, point.wkb_hex, EPSG_WGS84),
+            (
+                picture_id,
+                location[0],
+                location[1],
+                altitude,
+                geolocation_info,
+                point.wkb_hex,
+                EPSG_WGS84,
+            ),
         )
         return True
 
@@ -865,7 +911,6 @@ class PictureDb:
 
         counter = 0
         for i, pic in enumerate(cursor.fetchall()):
-
             lat_lon_str, lat_lon_val = exif.convert_gps(pic[1], pic[2], pic[3])
             if lat_lon_str:
                 if cls.add_to_locations_table(pic[0], lat_lon_val):
@@ -1042,7 +1087,6 @@ class PictureDb:
 
         for foldername, _, filenames in os.walk(base_folder):
             for filename in filenames:
-
                 sql_foldername = foldername.replace("'", "''")
                 sql_filename = filename.replace("'", "''")
 
@@ -1099,7 +1143,6 @@ class PictureDb:
         )
 
         for picture_id in id_list:
-
             sql_str = (
                 f"SELECT file_path, file_name FROM {cls.table_files} "
                 f"WHERE picture_id = {picture_id} "
@@ -1121,3 +1164,24 @@ class PictureDb:
 
             cls.update_image_md5(picture_id, im, 0)
             next(progress_message)
+
+    @classmethod
+    @DbUtils.connect
+    def add_geolocation_info(cls, start_id, end_id, cursor):
+        """patch to add geolocation info to the locations table"""
+        sql_str = (
+            f"SELECT id, longitude, latitude, geolocation_info FROM {cls.table_locations} "
+            f"where id >= %s and id < %s order by id;"
+        )
+        cursor.execute(sql_str, (start_id, end_id))
+        results = cursor.fetchall()
+
+        sql_str = (
+            f"UPDATE {cls.table_locations} SET geolocation_info = %s WHERE id = %s;"
+        )
+        for id, longitude, latitude, gl_info in results:
+            if not gl_info:
+                geolocation_info = cls.get_geolocation_info(longitude, latitude)
+                if geolocation_info:
+                    print(f"index {id:6,} has been updated ")
+                    cursor.execute(sql_str, (geolocation_info, id))

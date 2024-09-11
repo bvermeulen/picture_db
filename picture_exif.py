@@ -43,6 +43,15 @@ class FilesTable:
     file_checked: bool
 
 
+@dataclass
+class InfoTable:
+    country: str
+    state: str
+    city: str
+    suburb: str
+    road: str
+
+
 class Exif:
     """utility methods to handle picture exif"""
 
@@ -123,7 +132,6 @@ class Exif:
 
     @classmethod
     def get_exif_dict(cls, im, file):
-
         if im_info := im.info.get("exif"):
             try:
                 return cls.exif_to_tag(piexif.load(im_info))

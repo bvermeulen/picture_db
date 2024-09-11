@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QCalendarWidget,
     QDialog,
+    QFrame,
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QImage, QPixmap, QShortcut
@@ -142,6 +143,26 @@ def meta_to_text(pic_meta, file_meta, lat_lon_str, index=None, total=None):
     return text
 
 
+def info_to_text(info_meta):
+    text = (
+        f"country: {info_meta.country}\n"
+        f"state: {info_meta.state}\n"
+        f"city: {info_meta.city}\n"
+        f"suburb: {info_meta.suburb}\n"
+        f"road: {info_meta.road}"
+    )
+    return text
+
+
+class QHLine(QFrame):
+    def __init__(self, color="black", width=0):
+        super().__init__()
+        self.setFrameShape(QFrame.Shape.HLine)
+        self.setFrameShadow(QFrame.Shadow.Plain)
+        self.setLineWidth(width)
+        self.setStyleSheet(f"color: {color}")
+
+
 class DateDialog(QDialog):
     def __init__(self, parent):
         super().__init__()
@@ -196,6 +217,9 @@ class PictureShow(QWidget):
         self.index = None
         self.total = None
         self.file_path = None
+        self.pic_meta = None
+        self.file_meta = None
+        self.info_meta = None
         self.lat_lon_str = ""
         self.lat_lon_val = (None, None, None)
         self.initUI()
@@ -207,13 +231,13 @@ class PictureShow(QWidget):
     def initUI(self):
         vbox = QVBoxLayout()
         hbox_pic_action = QHBoxLayout()
-        self.pic_lbl = QLabel()
+        self.pic_lbl = QLabel(alignment=Qt.AlignmentFlag.AlignTop)
 
         vbox_text_action = QVBoxLayout()
         self.text_lbl = QLabel()
-        self.text_lbl.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.info_lbl = QLabel()
 
-        box_form = QFormLayout()
+        formbox = QFormLayout()
         self.e_make = QLineEdit()
         self.e_make.editingFinished.connect(self.update_attributes)
         self.e_model = QLineEdit()
@@ -222,12 +246,16 @@ class PictureShow(QWidget):
         self.e_pic_date.editingFinished.connect(self.update_attributes)
         self.e_lat_lon = QLineEdit()
         self.e_lat_lon.editingFinished.connect(self.update_attributes)
-        box_form.addRow("Camera make", self.e_make)
-        box_form.addRow("Camera model", self.e_model)
-        box_form.addRow("Date picture", self.e_pic_date)
-        box_form.addRow("Latitude, Longitude", self.e_lat_lon)
+        formbox.addRow("Camera make", self.e_make)
+        formbox.addRow("Camera model", self.e_model)
+        formbox.addRow("Date picture", self.e_pic_date)
+        formbox.addRow("Latitude, Longitude", self.e_lat_lon)
+        vbox_text_action.addWidget(self.info_lbl)
+        vbox_text_action.addWidget(QHLine())
         vbox_text_action.addWidget(self.text_lbl)
-        vbox_text_action.addLayout(box_form)
+        vbox_text_action.addWidget(QHLine())
+        vbox_text_action.addLayout(formbox)
+        vbox_text_action.addStretch()
 
         hbox_pic_action.addWidget(self.pic_lbl)
         hbox_pic_action.addLayout(vbox_text_action)
@@ -295,14 +323,16 @@ class PictureShow(QWidget):
             date_ = self.pic_meta.date_picture
 
         self.pic_lbl.setPixmap(pixmap)
-        self.text = meta_to_text(
+        meta_text = meta_to_text(
             self.pic_meta,
             self.file_meta,
             self.lat_lon_str,
             index=self.index,
             total=self.total,
         )
-        self.text_lbl.setText(self.text)
+        info_text = info_to_text(self.info_meta)
+        self.text_lbl.setText(meta_text)
+        self.info_lbl.setText(info_text)
         self.e_make.setText(self.pic_meta.camera_make)
         self.e_model.setText(self.pic_meta.camera_model)
         self.e_pic_date.setText(str(date_))
@@ -311,6 +341,7 @@ class PictureShow(QWidget):
                 [f"{v:0.5f}" for v in self.lat_lon_val if isinstance(v, (float, int))]
             )
         )
+        self.resize(self.sizeHint())
 
     def rotate_clockwise(self):
         # note degrees are defined in counter clockwise direction !
@@ -334,11 +365,12 @@ class PictureShow(QWidget):
             self.pic_meta.rotate = self.rotate
             self.show_picture()
 
-    def cntr_select_pic(self, picture_id):
+    def select_pic(self, picture_id):
         (
             self.image,
             self.pic_meta,
             self.file_meta,
+            self.info_meta,
             self.lat_lon_str,
             self.lat_lon_val,
         ) = self.picdb.load_picture_meta(picture_id)
@@ -354,18 +386,7 @@ class PictureShow(QWidget):
         self.index -= 1
         if self.index < 0:
             self.index = len(self.id_list) - 1
-
-        (
-            self.image,
-            self.pic_meta,
-            self.file_meta,
-            self.lat_lon_str,
-            self.lat_lon_val,
-        ) = self.picdb.load_picture_meta(self.id_list[self.index])
-
-        if self.pic_meta:
-            self.rotate = self.pic_meta.rotate
-            self.show_picture()
+        self.select_pic(self.id_list[self.index])
 
     def cntr_next(self):
         if self.index is None:
@@ -374,18 +395,7 @@ class PictureShow(QWidget):
         self.index += 1
         if self.index > len(self.id_list) - 1:
             self.index = 0
-
-        (
-            self.image,
-            self.pic_meta,
-            self.file_meta,
-            self.lat_lon_str,
-            self.lat_lon_val,
-        ) = self.picdb.load_picture_meta(self.id_list[self.index])
-
-        if self.pic_meta:
-            self.rotate = self.pic_meta.rotate
-            self.show_picture()
+        self.select_pic(self.id_list[self.index])
 
     def cntr_save(self):
         if self.index is None:
@@ -397,12 +407,12 @@ class PictureShow(QWidget):
         if self.id_list:
             self.index = 0
             self.total = len(self.id_list)
-            self.cntr_select_pic(self.id_list[self.index])
+            self.select_pic(self.id_list[self.index])
 
         else:
             self.index = None
             self.total = None
-            self.cntr_select_pic(-1)
+            self.select_pic(-1)
 
     def cntr_folderselect(self):
         folder_dialog = FolderDialog(self.picdb.get_file_paths(), self)
