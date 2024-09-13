@@ -1,8 +1,8 @@
 import sys
-from picture_db import PictureDb
+from picture_patches import PictureDbPatches
 
 if __name__ == "__main__":
-    pd = PictureDb()
+    pd = PictureDbPatches()
     argv = sys.argv
     batch_size = 100
     if len(argv) == 2:

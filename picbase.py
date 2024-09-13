@@ -1,8 +1,10 @@
 from pathlib import Path
 from picture_db import PictureDb
-import pyqt_picture
+from picture_patches import PictureDbPatches
+
 
 picdb = PictureDb()
+picdb_patches = PictureDbPatches
 BASE_FOLDER = Path("d:/pictures/pictures")
 # BASE_FOLDER = Path('d:/test_pictures')
 
@@ -45,10 +47,10 @@ def run_remove_pics(method="md5", start_id=None, end_id=None):
     """
     deleted_folder = Path("d:/pictures/Pics_deleted")
     if end_id:
-        picdb.remove_pics_by_id(deleted_folder, start_id, end_id=end_id)
+        picdb_patches.remove_pics_by_id(deleted_folder, start_id, end_id=end_id)
 
     elif start_id:
-        picdb.remove_pics_by_id(deleted_folder, start_id)
+        picdb_patches.remove_pics_by_id(deleted_folder, start_id)
 
     else:
         picdb.remove_duplicate_pics(deleted_folder, method=method)
@@ -63,11 +65,11 @@ def run_pic_gis(json_file):
 
 
 def run_update_rotate_checked(json_file):
-    picdb.update_rotate_checked(json_file)
+    picdb_patches.update_rotate_checked(json_file)
 
 
 def run_replace_picture():
-    picdb.replace_thumbnail(BASE_FOLDER)
+    picdb_patches.replace_thumbnail(BASE_FOLDER)
 
 
 def run_replace_picture_md5():
@@ -115,19 +117,22 @@ def run_replace_picture_md5():
         21789,
         21810,
     ]
-    picdb.replace_thumbnail_md5(id_list)
+    picdb_patches.replace_thumbnail_md5(id_list)
 
 
 if __name__ == "__main__":
     # TODO note there is a bug in file create date, sets to 1980-01-01
 
+    # regular functions
+    # run_merge_pictures()
+    run_update_picbase()
+
+    # special tools and patches
     # run_delete_tables()
     # run_create_tables()
     # run_delete_reviews_table()
     # run_fill_pic_base()
     # run_remove_pics(method='md5')  # method='md4' or 'date'
     # run_replace_picture()
-    # run_merge_pictures()
-    run_update_picbase()
-# run_pic_gis('') # 'id_with_location_013.json')
-# run_update_rotate_checked('ids.json')
+    # run_pic_gis('') # 'id_with_location_013.json')
+    # run_update_rotate_checked('ids.json')

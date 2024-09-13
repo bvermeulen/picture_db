@@ -451,7 +451,7 @@ class PictureShow(QWidget):
             self.pic_meta.gps_longitude,
             self.pic_meta.gps_altitude,
             self.pic_meta.gps_img_direction,
-        ) = exif.decimalgps_to_json(self.e_lat_lon.text())
+        ) = exif.serialize_decimalgps(self.e_lat_lon.text())
 
     def cntr_quit(self):
         self.close()

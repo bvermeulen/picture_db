@@ -15,41 +15,26 @@ DATABASE_PICTURE_SIZE = (600, 600)
 
 
 @dataclass
-class PicturesTable:
-    id: int
-    date_picture: datetime.datetime
+class PictureMetaDataSerialized:
+    date_picture: str
     md5_signature: str
     camera_make: str
     camera_model: str
-    gps_latitude: dict
-    gps_longitude: dict
-    gps_altitude: dict
-    gps_img_direction: dict
+    gps_latitude: str
+    gps_longitude: str
+    gps_altitude: str
+    gps_img_direction: str
     thumbnail: str
-    exif: dict
-    rotate: int
-    rotate_checked: bool
+    exif: str
 
 
 @dataclass
-class FilesTable:
-    id: int
-    picture_id: int
+class FileMetaDataSerialized:
     file_path: str
     file_name: str
-    file_modified: datetime.datetime
-    file_created: datetime.datetime
+    file_modified: str
+    file_created: str
     file_size: int
-    file_checked: bool
-
-
-@dataclass
-class InfoTable:
-    country: str
-    state: str
-    city: str
-    suburb: str
-    road: str
 
 
 class Exif:
@@ -142,9 +127,11 @@ class Exif:
         return {}
 
     @classmethod
-    def get_pic_meta(cls, filename):
-        pic_meta = PicturesTable(*[None] * 13)
-        file_meta = FilesTable(*[None] * 8)
+    def distill_serialized_picfile_meta_data(
+        cls, filename: str
+    ) -> tuple[PictureMetaDataSerialized, FileMetaDataSerialized]:
+        pic_meta = PictureMetaDataSerialized(*[None] * 10)
+        file_meta = FileMetaDataSerialized(*[None] * 5)
 
         valid_name = filename[-4:].lower() in [".jpg", ".png"] or filename[
             -5:
@@ -158,7 +145,7 @@ class Exif:
         except OSError:
             return pic_meta, file_meta
 
-        # file attributes
+        # file meta data attributes
         file_stat = os.stat(filename)
         file_meta.file_name = os.path.basename(filename)
         file_meta.file_path = os.path.abspath(filename).replace(file_meta.file_name, "")
@@ -171,7 +158,7 @@ class Exif:
             file_meta.file_created = file_meta.file_modified
         file_meta.file_size = file_stat.st_size
 
-        # exif attributes
+        # picture meta data attributes from exif
         exif_dict = cls.get_exif_dict(im, filename)
 
         if exif_dict:
@@ -196,7 +183,7 @@ class Exif:
                 pic_meta.gps_longitude,
                 pic_meta.gps_altitude,
                 pic_meta.gps_img_direction,
-            ) = cls.exifgps_to_json(exif_dict.get("GPS"))
+            ) = cls.serialize_exifgps(exif_dict.get("GPS"))
 
         else:
             pic_meta.camera_make, pic_meta.camera_model, pic_meta.date_picture = (
@@ -220,14 +207,12 @@ class Exif:
         picture_bytes = cls.get_image_bytes(im)
         pic_meta.thumbnail = json.dumps(picture_bytes.decode(cls.codec))
         pic_meta.md5_signature = hashlib.md5(picture_bytes).hexdigest()
-        pic_meta.exif = cls.exif_to_json(exif_dict)
-        pic_meta.rotate = 0
-        pic_meta.rotate_checked = False
+        pic_meta.exif = cls.serialize_exif(exif_dict)
 
         return pic_meta, file_meta
 
     @staticmethod
-    def exif_to_json(exif_tag_dict):
+    def serialize_exif(exif_tag_dict):
         try:
             return json.dumps(exif_tag_dict)
 
@@ -236,7 +221,7 @@ class Exif:
             raise ()
 
     @staticmethod
-    def exifgps_to_json(gps):
+    def serialize_exifgps(gps) -> tuple[str, str, str]:
         if not gps:
             return (json.dumps({}),) * 4
 
@@ -260,7 +245,7 @@ class Exif:
             )
 
     @staticmethod
-    def decimalgps_to_json(lat_lon_val):
+    def serialize_decimalgps(lat_lon_val: str | tuple):
         if isinstance(lat_lon_val, str):
             try:
                 lat, lon, alt = lat_lon_val.replace(",", " ").split()
@@ -350,7 +335,7 @@ class Exif:
             return None
 
     @staticmethod
-    def convert_to_json(pic_meta):
+    def serialize_gps_data_fields(pic_meta):
         if not isinstance(pic_meta.gps_latitude, str):
             pic_meta.gps_latitude = json.dumps(pic_meta.gps_latitude)
 
