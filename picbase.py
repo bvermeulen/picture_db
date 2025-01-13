@@ -134,5 +134,5 @@ if __name__ == "__main__":
     # run_fill_pic_base()
     # run_remove_pics(method='md5')  # method='md4' or 'date'
     # run_replace_picture()
-    # run_pic_gis('') # 'id_with_location_013.json')
+    # run_pic_gis('ids_run_locations.json') # 'id_with_location_013.json')
     # run_update_rotate_checked('ids.json')

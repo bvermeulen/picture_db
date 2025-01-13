@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from decouple import config
 from functools import wraps
 from shapely.geometry import Point
-import psycopg2
+import psycopg
 from geopy.geocoders import Nominatim
 from picture_exif import Exif
 from Utils.plogger import Logger
@@ -102,12 +102,12 @@ class DbUtils:
                 # add ggsencmode='disable' to resolve unsupported frontend protocol
                 # 1234.5679: server supports 2.0 to 3.0
                 # should be fixed on postgresql 12.3
-                connection = psycopg2.connect(connect_string, gssencmode="disable")
+                connection = psycopg.connect(connect_string, gssencmode="disable")
                 cursor = connection.cursor()
                 result = func(*args, cursor, **kwargs)
                 connection.commit()
 
-            except psycopg2.Error as error:
+            except psycopg.Error as error:
                 print(f"error while connect to PostgreSQL {cls.database}: " f"{error}")
 
             finally:
@@ -498,8 +498,8 @@ class PictureDb:
             f"SELECT geolocation_info FROM {cls.table_locations} WHERE picture_id=%s"
         )
         cursor.execute(sql_string, (_id,))
-        if geolocation_info := cursor.fetchone():
-            geolocation_info = geolocation_info[0]
+        fetch = cursor.fetchone()
+        if fetch and (geolocation_info := fetch[0]):
             info_meta = InfoTable(
                 country=geolocation_info.get("country", ""),
                 state=", ".join(
@@ -651,7 +651,7 @@ class PictureDb:
         sql_string_locations = (
             f"INSERT INTO {cls.table_locations} "
             f"(picture_id, latitude, longitude, altitude, geolocation_info, geom) "
-            f"VALUES (%s, %s, %s, %s, %, ST_SetSRID(%s::geometry, %s)) "
+            f"VALUES (%s, %s, %s, %s, %s, ST_SetSRID(%s::geometry, %s)) "
         )
 
         # TODO fix patch elevation is Null
