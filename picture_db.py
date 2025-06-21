@@ -8,7 +8,7 @@ import os
 from functools import wraps
 import numpy as np
 from shapely.geometry import Point
-import psycopg2
+import psycopg
 from decouple import config
 import psutil
 from picture_exif import Exif, PicturesTable, FilesTable
@@ -61,12 +61,12 @@ class DbUtils:
                 # add ggsencmode='disable' to resolve unsupported frontend protocol
                 # 1234.5679: server supports 2.0 to 3.0
                 # should be fixed on postgresql 12.3
-                connection = psycopg2.connect(connect_string, gssencmode='disable')
+                connection = psycopg.connect(connect_string, gssencmode='disable')
                 cursor = connection.cursor()
                 result = func(*args, cursor, **kwargs)
                 connection.commit()
 
-            except psycopg2.Error as error:
+            except psycopg.Error as error:
                 print(f'error while connect to PostgreSQL {cls.database}: '
                       f'{error}')
 
