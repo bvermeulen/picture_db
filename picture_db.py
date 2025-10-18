@@ -784,7 +784,7 @@ class PictureDb:
         """get the ids of pictures where folder matches."""
         folder = folder.replace("'", "''")
         sql_str = (
-            f"SELECT p.id from {cls.table_pictures} "
+            f"SELECT p.id from {cls.table_pictures} as p "
             f"JOIN {cls.table_files} as f on f.picture_id = p.id "
             f"WHERE lower(f.file_path) LIKE '%{folder}\\\\';"
         )
