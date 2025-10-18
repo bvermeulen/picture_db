@@ -551,7 +551,9 @@ class PictureDb:
         for foldername, _, filenames in os.walk(source_folder):
             for filename in filenames:
                 full_file_name = os.path.join(foldername, filename)
-                pic_meta, file_meta = exif.distill_serialized_picfile_meta_data(full_file_name)
+                pic_meta, file_meta = exif.distill_serialized_picfile_meta_data(
+                    full_file_name
+                )
                 if not file_meta.file_name:
                     continue
 
@@ -702,7 +704,6 @@ class PictureDb:
                     counter += 1
                     print(f"{i:5}: {counter:4} pic id: {pic[0]}, {lat_lon_str}")
 
-
     @classmethod
     @DbUtils.connect
     def update_image(cls, picture_id, image, rotate, cursor):
@@ -783,9 +784,9 @@ class PictureDb:
         """get the ids of pictures where folder matches."""
         folder = folder.replace("'", "''")
         sql_str = (
-            f"SELECT p.id from {cls.table_pictures} as p "
+            f"SELECT p.id from {cls.table_pictures} "
             f"JOIN {cls.table_files} as f on f.picture_id = p.id "
-            f"WHERE lower(f.file_path) LIKE '%{folder}\\\\'"
+            f"WHERE lower(f.file_path) LIKE '%{folder}\\\\';"
         )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]
@@ -799,10 +800,11 @@ class PictureDb:
         sql_str = (
             f"SELECT p.id from {cls.table_pictures} as p "
             f"JOIN {cls.table_files} as f on f.picture_id = p.id "
-            f'WHERE f.file_created > \'{date_select.strftime("%Y-%m-%d")}\' '
+            f"WHERE f.file_created > '{date_select.strftime("%Y-%m-%d")}';"
         )
         cursor.execute(sql_str)
-        return [val[0] for val in cursor.fetchall()]
+        ids = [val[0] for val in cursor.fetchall()]
+        return ids
 
     @classmethod
     @DbUtils.connect
@@ -812,21 +814,26 @@ class PictureDb:
             case DbFilter.NOGPS:
                 sql_str = (
                     f"SELECT id from {cls.table_pictures} "
-                    f"WHERE id=any(array{ids}) AND length(gps_latitude::text) < 3"
+                    f"WHERE id=any(array{ids}) AND length(gps_latitude::text) < 3 "
+                    f"ORDER BY date_picture;"
                 )
             case DbFilter.CHECKED:
                 sql_str = (
                     f"SELECT id from {cls.table_pictures} "
-                    f"WHERE id=any(array{ids}) AND rotate_checked"
+                    f"WHERE id=any(array{ids}) AND rotate_checked "
+                    f"ORDER BY date_picture;"
                 )
             case DbFilter.NOT_CHECKED:
                 sql_str = (
                     f"SELECT id from {cls.table_pictures} "
-                    f"WHERE id=any(array{ids}) AND not rotate_checked"
+                    f"WHERE id=any(array{ids}) AND not rotate_checked "
+                    f"ORDER BY date_picture;"
                 )
             case other:
                 sql_str = (
-                    f"SELECT id from {cls.table_pictures} " f"WHERE id=any(array{ids})"
+                    f"SELECT id from {cls.table_pictures} "
+                    f"WHERE id=any(array{ids}) "
+                    f"ORDER BY date_picture;"
                 )
         cursor.execute(sql_str)
         return [val[0] for val in cursor.fetchall()]

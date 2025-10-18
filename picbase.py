@@ -124,8 +124,8 @@ if __name__ == "__main__":
     # TODO note there is a bug in file create date, sets to 1980-01-01
 
     # regular functions
-    # run_merge_pictures()
-    run_update_picbase()
+    run_merge_pictures()
+    # run_update_picbase()
 
     # special tools and patches
     # run_delete_tables()
@@ -134,5 +134,5 @@ if __name__ == "__main__":
     # run_fill_pic_base()
     # run_remove_pics(method='md5')  # method='md4' or 'date'
     # run_replace_picture()
-    # run_pic_gis('ids_run_locations.json') # 'id_with_location_013.json')
+    # run_pic_gis(None) # 'id_with_location_013.json')
     # run_update_rotate_checked('ids.json')
