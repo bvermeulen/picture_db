@@ -78,14 +78,14 @@ class Exif:
             seconds = fractions[2][0] / fractions[2][1]
 
             if fractions[1][0] == 0 and fractions[2][0] == 0:
-                lat_long_str = f"{ref} {degrees:.4f}\u00B0"
+                lat_long_str = f"{ref} {degrees:.4f}\u00b0"
 
             elif fractions[2][0] == 0:
-                lat_long_str = f'{ref} {degrees:.0f}\u00B0 {minutes:.2f}"'
+                lat_long_str = f'{ref} {degrees:.0f}\u00b0 {minutes:.2f}"'
 
             else:
                 lat_long_str = (
-                    f"{ref} {degrees:.0f}\u00B0 {minutes:.0f}\" {seconds:.0f}'"
+                    f"{ref} {degrees:.0f}\u00b0 {minutes:.0f}\" {seconds:.0f}'"
                 )
 
             lat_long = degrees + minutes / 60 + seconds / 3600
@@ -135,7 +135,7 @@ class Exif:
 
         valid_name = filename[-4:].lower() in [".jpg", ".png"] or filename[
             -5:
-        ].lower() in [".heic", "jpeg"]
+        ].lower() in [".heic", ".jpeg"]
         if not valid_name:
             return pic_meta, file_meta
 
